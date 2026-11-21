@@ -242,3 +242,59 @@ a.card, a.link-card { text-decoration: none; color: inherit; display: block; }
 .header { padding-top: env(safe-area-inset-top, 0px); }
 .chip { min-height: 40px; }
 .calc-grid .btn { min-height: 58px; }
+
+/* v1.2.0 — hierarquia, gráfico, vazios e navegação */
+.header { box-shadow: 0 8px 24px rgba(20, 50, 30, .12); }
+.header h1 { letter-spacing: -.02em; }
+.page { padding: 16px 16px calc(var(--nav) + var(--safe-b) + 18px); }
+.vazio {
+  text-align: center; padding: 28px 16px; background: var(--papel);
+  border: 1px dashed var(--linha); border-radius: 18px;
+}
+.vazio-ico {
+  width: 56px; height: 56px; margin: 0 auto 10px; border-radius: 16px;
+  background: var(--folha-clara); color: var(--folha); display: grid; place-items: center;
+}
+.vazio h3 { margin: 0 0 6px; font-size: 16px; }
+.vazio p { margin: 0 auto; max-width: 28ch; }
+.grafico-card { margin: 12px 0; }
+.grafico-card h3 { margin: 0; font-size: 15px; }
+.grafico-svg { width: 100%; height: 140px; margin-top: 10px; display: block; }
+.grafico-svg .bar { fill: var(--folha); }
+.grafico-svg .bar.vazia { fill: var(--linha); }
+.grafico-svg .lbl { font-size: 4px; fill: var(--cinza); font-weight: 700; }
+.seg { display: flex; background: var(--folha-clara); border-radius: 999px; padding: 3px; gap: 2px; }
+.seg button {
+  border: 0; background: transparent; color: var(--folha-2); font-weight: 700; font-size: 12px;
+  min-height: 32px; padding: 0 12px; border-radius: 999px; cursor: pointer;
+}
+.seg button.on { background: var(--folha); color: #fff; }
+.nav {
+  backdrop-filter: saturate(1.2) blur(10px);
+  background: color-mix(in srgb, var(--papel) 92%, transparent);
+  box-shadow: 0 -8px 24px rgba(20, 50, 30, .08);
+}
+.nav a, .nav button { gap: 4px; font-size: 11px; font-weight: 700; letter-spacing: .02em; }
+.nav-ico {
+  width: 36px; height: 28px; display: grid; place-items: center; border-radius: 12px;
+}
+.nav a.active .nav-ico, .nav button.active .nav-ico { background: var(--folha); color: #fff; }
+.nav a.active, .nav button.active {
+  color: var(--folha); background: transparent; margin: 4px 2px; border-radius: 14px;
+}
+.link-mais { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.link-mais h3 { margin: 0 0 2px; font-size: 16px; }
+.link-mais p { margin: 0; }
+.mais-ico {
+  flex: none; width: 42px; height: 42px; border-radius: 14px;
+  background: var(--folha-clara); color: var(--folha); display: grid; place-items: center;
+}
+.mais-seta { font-size: 22px; color: var(--cinza); }
+.item { border-radius: 16px; }
+.lista { display: flex; flex-direction: column; gap: 8px; }
+:root[data-tema="escuro"] .nav {
+  background: color-mix(in srgb, var(--papel) 92%, transparent);
+  box-shadow: 0 -8px 24px rgba(0,0,0,.25);
+}
+:root[data-tema="escuro"] .grafico-svg .bar { fill: var(--lima); }
+:root[data-tema="escuro"] .vazio { background: var(--papel); }

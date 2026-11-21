@@ -9,6 +9,7 @@ import { resumoOuVazio } from "../lib/agregados";
 import { useConfirmar } from "../components/Dialogo";
 import { ListaVirtual } from "../components/ListaVirtual";
 import type { Venda } from "../lib/types";
+import { EstadoVazio } from "../components/EstadoVazio";
 
 const CHAVES = [5, 10, 20, 50, 100];
 
@@ -236,7 +237,7 @@ export function Calculadora() {
           chave={(v) => v.id}
           altura={320}
           alturaLinha={76}
-          vazio={null}
+          vazio={<EstadoVazio icone="venda" titulo="Nenhuma venda hoje" texto="Use a calculadora acima e toque em Registrar venda." />}
           render={(v) => <ItemVendaHoje venda={v} onExcluir={(x) => void pedirExclusao(x)} />}
         />
       </div>

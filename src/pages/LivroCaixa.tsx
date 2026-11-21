@@ -4,6 +4,8 @@ import { formatarReais } from "../lib/dinheiro";
 import { chaveSemana, diasDoMes, formatarDataHora, formatarDia, hojeChave, zonedParts } from "../lib/datas";
 import { RESUMO_VAZIO, resumoOuVazio } from "../lib/agregados";
 import { ListaVirtual } from "../components/ListaVirtual";
+import { GraficoVendas } from "../components/GraficoVendas";
+import { EstadoVazio } from "../components/EstadoVazio";
 
 const DOW = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 
@@ -43,8 +45,9 @@ export function LivroCaixa() {
         <div className="box"><div className="lbl">Semana</div><div className="v">{formatarReais(semana.total)}</div><div className="muted small">{semana.quantidade} venda(s)</div></div>
         <div className="box"><div className="lbl">Mês</div><div className="v">{formatarReais(mesR.total)}</div><div className="muted small">{mesR.quantidade} venda(s)</div></div>
         <div className="box"><div className="lbl">Ticket médio</div><div className="v" data-testid="ticket-medio">{formatarReais(dia.ticketMedio)}</div><div className="muted small">do dia selecionado</div></div>
-        <div className="box span"><div className="lbl">Total geral</div><div className="v" data-testid="total-geral">{formatarReais(total.total)}</div><div className="muted small">{total.quantidade} vendas · ticket médio {formatarReais(total.ticketMedio)}</div></div>
+        <div className="box span"><div className="lbl">Total geral</div><div className="v" data-testid="total-geral">{formatarReais(total.total)}</div><div className="muted small" data-testid="qtd-geral">{total.quantidade.toLocaleString("pt-BR")} vendas · ticket médio {formatarReais(total.ticketMedio)}</div></div>
       </div>
+      <GraficoVendas porDia={agregados.porDia} />
       <div className="card">
         <div className="mes-nav">
           <button className="btn btn-sm" onClick={() => mover(-1)} aria-label="Mês anterior">‹</button>
@@ -75,7 +78,7 @@ export function LivroCaixa() {
           chave={(v) => v.id}
           altura={360}
           alturaLinha={76}
-          vazio={<p className="muted">Nenhuma venda neste dia.</p>}
+          vazio={<EstadoVazio icone="venda" titulo="Nenhuma venda neste dia" texto="Toque em outro dia no calendário ou registre uma venda na calculadora." />}
           render={(v) => (
             <div className="item">
               <div>

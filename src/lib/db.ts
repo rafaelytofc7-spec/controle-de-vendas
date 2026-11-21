@@ -193,26 +193,85 @@ export async function upsertReabastecimento(r: Reabastecimento, sync = true): Pr
   if (sync) await marcarPendente("reabastecimentos", r.id, r.excluido ? "delete" : "upsert");
 }
 
-export async function importarDados(dados: DadosNormalizados, substituir = true): Promise<void> {
+export interface ResultadoImportacao {
+  modo: "substituir" | "mesclar";
+  adicionados: Record<string, number>;
+  atualizados: Record<string, number>;
+  mantidos: Record<string, number>;
+}
+
+function maisNovoOuIgual(importado?: string, local?: string): boolean {
+  if (!importado) return !local;
+  if (!local) return true;
+  return importado >= local;
+}
+
+export async function importarDados(dados: DadosNormalizados, substituir = false): Promise<ResultadoImportacao> {
+  const resultado: ResultadoImportacao = {
+    modo: substituir ? "substituir" : "mesclar",
+    adicionados: {}, atualizados: {}, mantidos: {},
+  };
+  type StoreDados = "vendas" | "produtos" | "entregas" | "encomendas" | "cobrancas" | "reabastecimentos";
+  const packs: Array<[StoreDados, Array<{ id: string; atualizado_em?: string }>]> = [
+    ["vendas", dados.vendas],
+    ["produtos", dados.produtos],
+    ["entregas", dados.entregas],
+    ["encomendas", dados.encomendas],
+    ["cobrancas", dados.cobrancas],
+    ["reabastecimentos", dados.reabastecimentos],
+  ];
+  const pendentes: Array<{ colecao: string; id: string }> = [];
+
   if (substituir) {
     await resetarBanco();
   }
+
   const d = await db();
   const tx = d.transaction(
     ["vendas", "produtos", "entregas", "encomendas", "cobrancas", "reabastecimentos", "configuracao", "meta", "pendentes"],
     "readwrite",
   );
-  for (const v of dados.vendas) await tx.objectStore("vendas").put(v);
-  for (const p of dados.produtos) await tx.objectStore("produtos").put(p);
-  for (const e of dados.entregas) await tx.objectStore("entregas").put(e);
-  for (const e of dados.encomendas) await tx.objectStore("encomendas").put(e);
-  for (const c of dados.cobrancas) await tx.objectStore("cobrancas").put(c);
-  for (const r of dados.reabastecimentos) await tx.objectStore("reabastecimentos").put(r);
-  await tx.objectStore("configuracao").put(dados.configuracao);
+
+  for (const [nome, rows] of packs) {
+    const store = tx.objectStore(nome);
+    for (const row of rows) {
+      if (substituir) {
+        await store.put(row as never);
+        resultado.adicionados[nome] = (resultado.adicionados[nome] ?? 0) + 1;
+        continue;
+      }
+      const atual = await store.get(row.id) as { atualizado_em?: string } | undefined;
+      if (!atual) {
+        await store.put(row as never);
+        resultado.adicionados[nome] = (resultado.adicionados[nome] ?? 0) + 1;
+        pendentes.push({ colecao: nome, id: row.id });
+      } else if (maisNovoOuIgual(row.atualizado_em, atual.atualizado_em)) {
+        await store.put(row as never);
+        resultado.atualizados[nome] = (resultado.atualizados[nome] ?? 0) + 1;
+        pendentes.push({ colecao: nome, id: row.id });
+      } else {
+        resultado.mantidos[nome] = (resultado.mantidos[nome] ?? 0) + 1;
+      }
+    }
+  }
+
+  const cfgStore = tx.objectStore("configuracao");
+  const cfgLocal = await cfgStore.get(dados.configuracao.loja) as { atualizado_em?: string } | undefined;
+  if (substituir || !cfgLocal || maisNovoOuIgual(dados.configuracao.atualizado_em, cfgLocal.atualizado_em)) {
+    await cfgStore.put(dados.configuracao);
+  }
   await tx.objectStore("meta").put({ chave: "loja", valor: dados.loja });
   await tx.objectStore("meta").put({ chave: "importado_em", valor: agoraIso() });
-  await tx.objectStore("meta").put({ chave: "precisa_upload_inicial", valor: true });
+  const flag = await tx.objectStore("meta").get("precisa_upload_inicial");
+  if (substituir || flag?.valor !== false) {
+    await tx.objectStore("meta").put({ chave: "precisa_upload_inicial", valor: true });
+  }
   await tx.done;
+
+  if (!substituir) {
+    for (const p of pendentes) await marcarPendente(p.colecao, p.id, "upsert");
+  }
+  return resultado;
 }
 
 export async function exportarDados(): Promise<DadosNormalizados> {

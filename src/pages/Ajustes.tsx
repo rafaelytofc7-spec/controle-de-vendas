@@ -7,7 +7,6 @@ import {
   signOut,
 } from "firebase/auth";
 import { useStore, exportarDados, montarBackup } from "../store";
-import { verificarBackupOficial } from "../lib/importacao";
 import { configValida, iniciarFirebase } from "../lib/firebase";
 import { carregarBackupDoDrive, carregarGis, obterTokenDrive, salvarBackupNoDrive } from "../lib/drive";
 import type { FirebaseWebConfig } from "../lib/types";
@@ -30,6 +29,7 @@ export function Ajustes() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [busy, setBusy] = useState(false);
+  const [substituirTudo, setSubstituirTudo] = useState(false);
   const [versaoRemota, setVersaoRemota] = useState<string>();
   const nativo = ehNativo();
   const podeEditarLoja = ehDono || !usuario;
@@ -65,11 +65,10 @@ export function Ajustes() {
     if (!f) return;
     setBusy(true); setAviso("");
     try {
-      const dados = await importarArquivo(JSON.parse(await f.text()));
-      const v = verificarBackupOficial(dados);
-      setAviso(v.ok
-        ? `Importado: ${v.vendas} vendas, total ${v.total_vendas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`
-        : `Importado. ${v.diferencas.join("; ") || `${v.vendas} vendas.`}`);
+      const dados = await importarArquivo(JSON.parse(await f.text()), substituirTudo);
+      const total = dados.vendas.reduce((a, v) => a + v.valor, 0);
+      const modo = substituirTudo ? "Substituído" : "Mesclado pelo id";
+      setAviso(`${modo}: ${dados.vendas.length.toLocaleString("pt-BR")} vendas no arquivo, total ${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Registros já existentes não são duplicados.`);
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Falha na importação.");
     } finally { setBusy(false); }
@@ -166,10 +165,14 @@ export function Ajustes() {
       {tab === "backup" && (
         <div className="card col">
           <h3>Backup</h3>
-          <p className="muted">Exporte um arquivo JSON com tudo que está neste aparelho, ou restaure a partir de um arquivo (incluindo o backup que você já recebeu). Isso funciona offline, sem Google Drive. O histórico da loja não vem embutido no aplicativo.</p>
+          <p className="muted">Exporte um arquivo JSON com tudo que está neste aparelho. Para trazer dados novos, importe o arquivo de atualização: ele mescla pelo id e não duplica o que já estava no caixa. O histórico da loja não vem embutido no aplicativo.</p>
           <button className="btn btn-primary" onClick={() => void exportar()}>{nativo ? "Exportar / compartilhar backup" : "Baixar arquivo de backup"}</button>
-          <label className="field">Importar arquivo do aparelho
+          <label className="field">Importar arquivo do aparelho (mescla pelo id)
             <input className="input" type="file" accept="application/json,.json" disabled={busy} onChange={(e) => void importar(e.target.files?.[0] ?? null)} />
+          </label>
+          <label className="check">
+            <input type="checkbox" checked={substituirTudo} onChange={(e) => setSubstituirTudo(e.target.checked)} />
+            Substituir tudo (apaga o que só existe neste aparelho)
           </label>
           <hr style={{ border: 0, borderTop: "1px solid var(--linha)", margin: "8px 0" }} />
           <h3>Google Drive</h3>

@@ -7,6 +7,7 @@ import { gerarId } from "../lib/importacao";
 import { agoraIso } from "../lib/datas";
 import { linkWhatsapp, textoCardapio } from "../lib/whatsapp";
 import { useConfirmar } from "../components/Dialogo";
+import { EstadoVazio } from "../components/EstadoVazio";
 
 export function Cardapio() {
   const { produtos, config, salvarProduto, excluirProduto } = useStore();
@@ -67,6 +68,13 @@ export function Cardapio() {
       </div>
       <a className="btn btn-lima btn-block" href={linkWhatsapp(config.telefone, texto)} target="_blank" rel="noreferrer">Compartilhar cardápio no WhatsApp</a>
       <div className="lista" style={{ marginTop: 12 }}>
+        {lista.length === 0 && (
+          <EstadoVazio
+            icone="cardapio"
+            titulo={buscaDeb.trim() ? "Nenhum produto encontrado" : "Cardápio vazio"}
+            texto={buscaDeb.trim() ? "Tente outro nome ou limpe a busca." : "Cadastre os produtos com preço, unidade e promoção. Eles aparecem no texto para WhatsApp."}
+          />
+        )}
         {lista.map((p) => (
           <div className="item" key={p.id}>
             <div className="grow">

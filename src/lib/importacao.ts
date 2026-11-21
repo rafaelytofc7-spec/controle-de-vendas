@@ -298,6 +298,14 @@ export const ESPERADO_BACKUP_INICIAL = {
   total_vendas: 164476.16,
 };
 
+export const ESPERADO_BACKUP_ATUALIZADO = {
+  vendas: 6917,
+  produtos: 57,
+  encomendas: 5,
+  cobrancas: 3,
+  total_vendas: 164518.86,
+};
+
 export function verificarDados(
   dados: DadosNormalizados,
   esperado?: Partial<typeof ESPERADO_BACKUP_INICIAL>,

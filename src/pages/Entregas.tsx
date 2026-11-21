@@ -5,6 +5,7 @@ import { formatarDataHora } from "../lib/datas";
 import { linkWhatsapp, textoEntrega } from "../lib/whatsapp";
 import { useConfirmar } from "../components/Dialogo";
 import type { StatusEntrega } from "../lib/types";
+import { EstadoVazio } from "../components/EstadoVazio";
 
 const LABELS: Record<StatusEntrega, string> = { pendente: "Pendente", a_caminho: "A caminho", entregue: "Entregue" };
 
@@ -34,7 +35,7 @@ export function Entregas() {
       {dialogo}
       <button className="btn btn-primary btn-block" onClick={() => abrir()}>Nova entrega</button>
       <div className="lista" style={{ marginTop: 12 }}>
-        {entregas.length === 0 && <p className="muted">Nenhuma entrega cadastrada.</p>}
+        {entregas.length === 0 && <EstadoVazio icone="entrega" titulo="Nenhuma entrega" texto="Cadastre a saída com cliente, endereço e valor. O status e o WhatsApp ficam à mão." />}
         {entregas.map((e) => (
           <div className="item" key={e.id}>
             <div className="grow">

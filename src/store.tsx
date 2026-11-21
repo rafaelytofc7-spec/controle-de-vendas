@@ -48,7 +48,7 @@ interface Store {
   cobrancas: Cobranca[];
   reabastecimentos: Reabastecimento[];
   recarregar: () => Promise<void>;
-  importarArquivo: (raw: unknown) => Promise<DadosNormalizados>;
+  importarArquivo: (raw: unknown, substituir?: boolean) => Promise<DadosNormalizados>;
   registrarVenda: (valor: number) => Promise<Venda>;
   excluirVenda: (id: string) => Promise<void>;
   salvarProduto: (p: Omit<Produto, "atualizado_em" | "loja" | "criadoPor" | "criadoPorEmail" | "atualizadoPor" | "atualizadoPorEmail"> & { loja?: string } & Partial<import("./lib/types").Autoria>) => Promise<void>;
@@ -163,10 +163,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch { return; }
   }, [firebaseCfg]);
 
-  const importarArquivo = useCallback(async (raw: unknown) => {
+  const importarArquivo = useCallback(async (raw: unknown, substituir = false) => {
     const backup = parseBackup(raw);
     const dados = normalizarBackup(backup);
-    await importarDados(dados, true);
+    await importarDados(dados, substituir);
     await recarregar();
     return dados;
   }, [recarregar]);

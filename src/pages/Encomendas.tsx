@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
 import { formatarDataHora } from "../lib/datas";
 import { useConfirmar } from "../components/Dialogo";
+import { EstadoVazio } from "../components/EstadoVazio";
 
 export function Encomendas() {
   const { encomendas, salvarEncomenda, concluirEncomenda, excluirEncomenda } = useStore();
@@ -38,7 +39,7 @@ export function Encomendas() {
       {dialogo}
       <button className="btn btn-primary btn-block" onClick={() => abrir()}>Nova encomenda</button>
       <div className="lista" style={{ marginTop: 12 }} data-testid="lista-encomendas">
-        {encomendas.length === 0 && <p className="muted">Nenhuma encomenda.</p>}
+        {encomendas.length === 0 && <EstadoVazio icone="encomenda" titulo="Nenhuma encomenda" texto="Reserve um pedido com valor, cliente e data combinada. Ele aparece aqui até ser concluído." />}
         {encomendas.map((e) => (
           <div className="item" key={e.id}>
             <div className="grow">

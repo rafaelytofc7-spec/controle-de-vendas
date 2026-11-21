@@ -1,3 +1,4 @@
+import { EstadoVazio } from "../components/EstadoVazio";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
 import { formatarDataHora } from "../lib/datas";
@@ -14,7 +15,7 @@ export function Cobrancas() {
         <p className="muted small">Somente registros manuais de teste. Este aplicativo não envia cobranças para Stone ou PicPay e não guarda chaves de pagamento.</p>
       </div>
       <div className="lista" style={{ marginTop: 12 }} data-testid="lista-cobrancas">
-        {lista.length === 0 && <p className="muted">Nenhuma cobrança.</p>}
+        {lista.length === 0 && <EstadoVazio icone="cobranca" titulo="Nenhuma cobrança" texto="Aqui ficam só registros manuais de teste. Este aplicativo não envia cobrança a maquininha nem guarda chave de pagamento." />}
         {lista.map((c) => (
           <div className="item" key={c.id}>
             <div className="grow">

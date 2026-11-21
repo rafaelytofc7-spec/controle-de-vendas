@@ -5,6 +5,7 @@ import { formatarReais } from "../lib/dinheiro";
 import { precoSugerido as calcSug, custoUnitario } from "../lib/reabastecimento";
 import { formatarDataHora, chaveMes, agoraIso } from "../lib/datas";
 import { useConfirmar } from "../components/Dialogo";
+import { EstadoVazio } from "../components/EstadoVazio";
 
 export function Estoque() {
   const { produtos, reabastecimentos, registrarReabastecimento, excluirReabastecimento, salvarProduto } = useStore();
@@ -85,6 +86,9 @@ export function Estoque() {
         </div>
       </div>
       <div className="lista" style={{ marginTop: 12 }}>
+        {reabastecimentos.length === 0 && (
+          <EstadoVazio icone="estoque" titulo="Nenhuma entrada ainda" texto="Registre uma compra com quantidade e valor pago. O custo e o preço sugerido são calculados na hora." />
+        )}
         {reabastecimentos.map((r) => (
           <div className="item" key={r.id}>
             <div className="grow">

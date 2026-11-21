@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useStore } from "../store";
-import { verificarBackupOficial } from "../lib/importacao";
 
 export function PrimeiraExecucao() {
   const { importarArquivo } = useStore();
@@ -14,12 +13,8 @@ export function PrimeiraExecucao() {
     try {
       const raw = JSON.parse(await f.text());
       const dados = await importarArquivo(raw);
-      const v = verificarBackupOficial(dados);
-      if (v.ok) {
-        setOk(`Importado: ${v.vendas.toLocaleString("pt-BR")} vendas, ${v.produtos.toLocaleString("pt-BR")} produtos, ${v.encomendas.toLocaleString("pt-BR")} encomendas, ${v.cobrancas.toLocaleString("pt-BR")} cobranças. Total ${v.total_vendas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`);
-      } else {
-        setOk(`Importado com diferenças: ${v.diferencas.join("; ")}.`);
-      }
+      const total = dados.vendas.reduce((a, v) => a + v.valor, 0);
+      setOk(`Importado: ${dados.vendas.length.toLocaleString("pt-BR")} vendas, ${dados.produtos.length.toLocaleString("pt-BR")} produtos, ${dados.encomendas.length.toLocaleString("pt-BR")} encomendas, ${dados.cobrancas.length.toLocaleString("pt-BR")} cobranças. Total ${total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível ler o arquivo.");
     } finally { setBusy(false); }
