@@ -1,6 +1,7 @@
 import { arredondar2, somarValores } from "./dinheiro";
 import { agoraIso } from "./datas";
 import type {
+  Autoria,
   BackupArquivo,
   Cobranca,
   ConfiguracaoLoja,
@@ -15,6 +16,7 @@ import type {
   Venda,
   VerificacaoImportacao,
 } from "./types";
+import { AUTOR_IMPORTADO } from "./types";
 import { calcularReabastecimento } from "./reabastecimento";
 
 const TOKEN_KEYS = /^(token|secret|senha|password|access_token|api_key|apikey|refresh_token|client_secret|private_key)$/i;
@@ -61,6 +63,20 @@ function iso(v: unknown, fallback?: string): string {
     if (!Number.isNaN(d.getTime())) return d.toISOString();
   }
   return fallback ?? agoraIso();
+}
+
+
+function autoriaImportada(row: Record<string, unknown>): Autoria {
+  const criadoPor = str(row.criadoPor ?? row.criado_por, AUTOR_IMPORTADO) || AUTOR_IMPORTADO;
+  const atualizadoPor = str(row.atualizadoPor ?? row.atualizado_por, criadoPor) || criadoPor;
+  const criadoPorEmail = str(row.criadoPorEmail ?? row.criado_por_email);
+  const atualizadoPorEmail = str(row.atualizadoPorEmail ?? row.atualizado_por_email);
+  return {
+    criadoPor,
+    criadoPorEmail: criadoPorEmail || undefined,
+    atualizadoPor,
+    atualizadoPorEmail: atualizadoPorEmail || undefined,
+  };
 }
 
 function isoOrNull(v: unknown): string | null {
@@ -114,6 +130,7 @@ export function normalizarVenda(row: Record<string, unknown>, loja: string): Ven
     valor: arredondar2(num(r.valor)),
     criado_em: criado,
     atualizado_em: iso(r.atualizado_em ?? r.atualizadoEm, criado),
+    ...autoriaImportada(r),
   };
 }
 
@@ -132,6 +149,7 @@ export function normalizarProduto(row: Record<string, unknown>, loja: string): P
     preco_promocional: numOrNull(r.preco_promocional ?? r.precoPromocional),
     promo_expira_em: isoOrNull(r.promo_expira_em ?? r.promoExpiraEm),
     promo_inicia_em: isoOrNull(r.promo_inicia_em ?? r.promoIniciaEm),
+    ...autoriaImportada(r),
   };
 }
 
@@ -153,6 +171,7 @@ export function normalizarEntrega(row: Record<string, unknown>, loja: string): E
     criado_em: criado,
     concluido_em: isoOrNull(r.concluido_em ?? r.concluidoEm),
     atualizado_em: iso(r.atualizado_em ?? r.atualizadoEm, criado),
+    ...autoriaImportada(r),
   };
 }
 
@@ -172,6 +191,7 @@ export function normalizarEncomenda(row: Record<string, unknown>, loja: string):
     criado_em: criado,
     concluido_em: isoOrNull(r.concluido_em ?? r.concluidoEm),
     atualizado_em: iso(r.atualizado_em ?? r.atualizadoEm, criado),
+    ...autoriaImportada(r),
   };
 }
 
@@ -204,6 +224,7 @@ export function normalizarCobranca(row: Record<string, unknown>, loja: string): 
     criado_em: criado,
     pago_em: isoOrNull(r.pago_em ?? r.pagoEm),
     atualizado_em: iso(r.atualizado_em ?? r.atualizadoEm, criado),
+    ...autoriaImportada(r),
   };
 }
 
@@ -227,6 +248,7 @@ export function normalizarReabastecimento(row: Record<string, unknown>, loja: st
     preco_sugerido: numOrNull(r.preco_sugerido ?? r.precoSugerido) ?? calc.preco_sugerido,
     criado_em: criado,
     atualizado_em: iso(r.atualizado_em ?? r.atualizadoEm, criado),
+    ...autoriaImportada(r),
   };
 }
 

@@ -7,6 +7,7 @@ function prod(over: Partial<Produto> = {}): Produto {
   return {
     id: "1", loja: "loja", nome: "Alface", preco: 5, unidade: "un", ordem: 1,
     criado_em: "2026-01-01T00:00:00.000Z", atualizado_em: "2026-01-01T00:00:00.000Z",
+    criadoPor: "importado", atualizadoPor: "importado",
     preco_promocional: 3, promo_inicia_em: "2026-06-01T00:00:00.000Z", promo_expira_em: "2026-06-10T00:00:00.000Z",
     ...over,
   };

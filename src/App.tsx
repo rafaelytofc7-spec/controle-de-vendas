@@ -9,7 +9,10 @@ import { Encomendas } from "./pages/Encomendas";
 import { Estoque } from "./pages/Estoque";
 import { Cobrancas } from "./pages/Cobrancas";
 import { Ajustes } from "./pages/Ajustes";
+import { Administracao } from "./pages/Administracao";
 import { Mais } from "./pages/Mais";
+import { APP_VERSION, buscarVersaoRemota, temAtualizacao } from "./lib/versao";
+import { useEffect, useState } from "react";
 
 function Icon({ d }: { d: string }) {
   return (
@@ -29,12 +32,24 @@ const TITULOS: Record<string, { t: string; s: string }> = {
   "/cobrancas": { t: "Cobranças", s: "Registros manuais" },
   "/mais": { t: "Mais", s: "Outras telas" },
   "/ajustes": { t: "Ajustes", s: "Loja, backup e nuvem" },
+  "/admin": { t: "Administração", s: "Equipe e registro de atividades" },
 };
 
 function Shell() {
-  const { pronto, temDados, config, online, syncando, usuario } = useStore();
+  const { pronto, temDados, config, online, syncando, usuario, ehDono, bloqueado } = useStore();
   const loc = useLocation();
   const meta = TITULOS[loc.pathname] ?? { t: "Controle de Vendas", s: "" };
+  const [atualizacao, setAtualizacao] = useState<string>();
+
+  useEffect(() => {
+    const ac = new AbortController();
+    void buscarVersaoRemota(ac.signal).then((info) => {
+      if (info && temAtualizacao(APP_VERSION, info.version)) {
+        setAtualizacao(info.version);
+      }
+    });
+    return () => ac.abort();
+  }, []);
 
   if (!pronto) {
     return (
@@ -55,8 +70,15 @@ function Shell() {
         </div>
         <div className="small" style={{ textAlign: "right", opacity: 0.9 }}>
           {!online ? "Offline" : syncando ? "Sincronizando…" : usuario ? "Nuvem ligada" : "Local"}
+          <div>v{APP_VERSION}</div>
         </div>
       </header>
+      {bloqueado && <div className="banner erro aviso-atualizacao">Sua conta está bloqueada nesta loja. Os dados locais continuam no aparelho, mas a nuvem não aceita alterações.</div>}
+      {atualizacao && (
+        <div className="banner aviso-atualizacao">
+          Há uma versão nova ({atualizacao}). Atualize o site ou baixe o APK em Mais → Ajustes.
+        </div>
+      )}
       <main className="page">
         <Routes>
           <Route path="/" element={<Calculadora />} />
@@ -68,6 +90,7 @@ function Shell() {
           <Route path="/cobrancas" element={<Cobrancas />} />
           <Route path="/mais" element={<Mais />} />
           <Route path="/ajustes" element={<Ajustes />} />
+          <Route path="/admin" element={<Administracao />} />
         </Routes>
       </main>
       <nav className="nav">

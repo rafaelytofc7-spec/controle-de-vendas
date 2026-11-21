@@ -1,19 +1,24 @@
 import { Link } from "react-router-dom";
+import { useStore } from "../store";
 
-const ITENS = [
-  { to: "/encomendas", t: "Encomendas", d: "Pedidos reservados para o cliente" },
-  { to: "/estoque", t: "Reabastecimento", d: "Custo e preço sugerido" },
+const LINKS = [
+  { to: "/encomendas", t: "Encomendas", d: "Pedidos reservados" },
+  { to: "/estoque", t: "Estoque", d: "Reabastecimento e preço sugerido" },
   { to: "/cobrancas", t: "Cobranças", d: "Registros manuais de teste" },
   { to: "/ajustes", t: "Ajustes", d: "Loja, backup, Firebase e guia" },
 ];
 
 export function Mais() {
+  const { ehDono } = useStore();
+  const itens = ehDono
+    ? [...LINKS, { to: "/admin", t: "Administração", d: "Equipe, atividades, faturamento e loja" }]
+    : LINKS;
   return (
-    <div className="col">
-      {ITENS.map((i) => (
-        <Link key={i.to} to={i.to} className="card" style={{ textDecoration: "none", color: "inherit" }}>
-          <h3>{i.t}</h3>
-          <p className="muted" style={{ margin: "4px 0 0" }}>{i.d}</p>
+    <div className="stack">
+      {itens.map((l) => (
+        <Link key={l.to} to={l.to} className="card link-card">
+          <h3>{l.t}</h3>
+          <p className="muted">{l.d}</p>
         </Link>
       ))}
     </div>

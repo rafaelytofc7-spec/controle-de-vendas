@@ -1,10 +1,12 @@
 import { deleteDB, openDB, type IDBPDatabase } from "idb";
 import type {
+  Atividade,
   Cobranca,
   ConfiguracaoLoja,
   Encomenda,
   Entrega,
   FirebaseWebConfig,
+  MembroLoja,
   Produto,
   Reabastecimento,
   Venda,
@@ -13,7 +15,7 @@ import type { DadosNormalizados } from "./importacao";
 import { agoraIso } from "./datas";
 
 const DB_NAME = "controle-de-vendas";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export interface MetaSync {
   chave: string;
@@ -37,6 +39,8 @@ type Schema = {
   configuracao: { key: string; value: ConfiguracaoLoja };
   meta: { key: string; value: { chave: string; valor: unknown } };
   pendentes: { key: string; value: PendenteSync };
+  membros: { key: string; value: MembroLoja };
+  atividades: { key: string; value: Atividade; indexes: { "por-em": string } };
 };
 
 let _db: IDBPDatabase<Schema> | null = null;
@@ -77,6 +81,13 @@ export async function db(): Promise<IDBPDatabase<Schema>> {
       }
       if (!database.objectStoreNames.contains("pendentes")) {
         database.createObjectStore("pendentes", { keyPath: "id" });
+      }
+      if (!database.objectStoreNames.contains("membros")) {
+        database.createObjectStore("membros", { keyPath: "uid" });
+      }
+      if (!database.objectStoreNames.contains("atividades")) {
+        const s = database.createObjectStore("atividades", { keyPath: "id" });
+        s.createIndex("por-em", "em");
       }
     },
   });
@@ -224,6 +235,34 @@ export async function exportarDados(): Promise<DadosNormalizados> {
     cobrancas: await listarCobrancas(10_000),
     reabastecimentos: await listarReabastecimentos(),
   };
+}
+
+
+export async function listarMembros(): Promise<MembroLoja[]> {
+  const d = await db();
+  return (await d.getAll("membros")).sort((a, b) => a.email.localeCompare(b.email, "pt-BR"));
+}
+
+export async function upsertMembro(m: MembroLoja): Promise<void> {
+  const d = await db();
+  await d.put("membros", m);
+}
+
+export async function removerMembroLocal(uid: string): Promise<void> {
+  const d = await db();
+  await d.delete("membros", uid);
+}
+
+export async function listarAtividades(limite = 500): Promise<Atividade[]> {
+  const d = await db();
+  const all = await d.getAll("atividades");
+  return all.sort((a, b) => b.em.localeCompare(a.em)).slice(0, limite);
+}
+
+export async function upsertAtividade(a: Atividade, marcar = true): Promise<void> {
+  const d = await db();
+  await d.put("atividades", a);
+  if (marcar) await marcarPendente("atividades", a.id, "upsert");
 }
 
 export async function getMeta<T = unknown>(chave: string): Promise<T | undefined> {

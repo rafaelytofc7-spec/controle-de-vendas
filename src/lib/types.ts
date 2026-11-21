@@ -3,7 +3,40 @@ export type StatusCobranca = "aguardando" | "paga" | "cancelada";
 export type FormaCobranca = "debito" | "credito" | "pix";
 export type ProvedorCobranca = "stone" | "picpay" | "manual";
 
-export interface Venda {
+/** uid of the signed-in user, or "importado" for legacy backup rows, or "local" before login. */
+export const AUTOR_IMPORTADO = "importado";
+export const AUTOR_LOCAL = "local";
+
+export interface Autoria {
+  criadoPor: string;
+  criadoPorEmail?: string;
+  atualizadoPor: string;
+  atualizadoPorEmail?: string;
+}
+
+export interface MembroLoja {
+  uid: string;
+  email: string;
+  bloqueado: boolean;
+  ultimoAcesso: string | null;
+  criado_em: string;
+}
+
+export type AcaoAtividade = "criar" | "editar" | "excluir";
+
+export interface Atividade {
+  id: string;
+  loja: string;
+  uid: string;
+  email: string;
+  acao: AcaoAtividade;
+  colecao: string;
+  registroId: string;
+  resumo: string;
+  em: string;
+}
+
+export interface Venda extends Autoria {
   id: string;
   loja: string;
   valor: number;
@@ -12,7 +45,7 @@ export interface Venda {
   excluido?: boolean;
 }
 
-export interface Produto {
+export interface Produto extends Autoria {
   id: string;
   loja: string;
   nome: string;
@@ -27,7 +60,7 @@ export interface Produto {
   excluido?: boolean;
 }
 
-export interface Entrega {
+export interface Entrega extends Autoria {
   id: string;
   loja: string;
   cliente: string;
@@ -41,7 +74,7 @@ export interface Entrega {
   excluido?: boolean;
 }
 
-export interface Encomenda {
+export interface Encomenda extends Autoria {
   id: string;
   loja: string;
   cliente: string;
@@ -57,7 +90,7 @@ export interface Encomenda {
   excluido?: boolean;
 }
 
-export interface Cobranca {
+export interface Cobranca extends Autoria {
   id: string;
   loja: string;
   valor: number;
@@ -74,7 +107,7 @@ export interface Cobranca {
   excluido?: boolean;
 }
 
-export interface Reabastecimento {
+export interface Reabastecimento extends Autoria {
   id: string;
   loja: string;
   produto_id: string | null;

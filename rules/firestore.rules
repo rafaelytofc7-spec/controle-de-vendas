@@ -11,25 +11,50 @@ service cloud.firestore {
         : '';
     }
 
-    function ehMembro(lojaId) {
-      return authed() && (
-        exists(/databases/$(database)/documents/lojas/$(lojaId)/membros/$(request.auth.uid))
-        || (
-          exists(/databases/$(database)/documents/lojas/$(lojaId))
-          && (
-            get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid
-            || (
-              get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails is list
-              && emailAtual() in get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails
-            )
-          )
-        )
-      );
+    function lojaDoc(lojaId) {
+      return get(/databases/$(database)/documents/lojas/$(lojaId));
+    }
+
+    function membroDoc(lojaId, uid) {
+      return get(/databases/$(database)/documents/lojas/$(lojaId)/membros/$(uid));
     }
 
     function ehDono(lojaId) {
-      return authed() && exists(/databases/$(database)/documents/lojas/$(lojaId))
-        && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid;
+      return authed()
+        && exists(/databases/$(database)/documents/lojas/$(lojaId))
+        && lojaDoc(lojaId).data.ownerUid == request.auth.uid;
+    }
+
+    function convocado(lojaId) {
+      return exists(/databases/$(database)/documents/lojas/$(lojaId))
+        && lojaDoc(lojaId).data.membrosEmails is list
+        && emailAtual() in lojaDoc(lojaId).data.membrosEmails;
+    }
+
+    function registroMembro(lojaId) {
+      return exists(/databases/$(database)/documents/lojas/$(lojaId)/membros/$(request.auth.uid));
+    }
+
+    function bloqueado(lojaId) {
+      return registroMembro(lojaId) && membroDoc(lojaId, request.auth.uid).data.bloqueado == true;
+    }
+
+    function ehMembro(lojaId) {
+      return authed() && !bloqueado(lojaId) && (
+        ehDono(lojaId) || registroMembro(lojaId) || convocado(lojaId)
+      );
+    }
+
+    function autorCriacaoOk() {
+      return request.resource.data.criadoPor == request.auth.uid
+        || (request.resource.data.criadoPor == 'importado'
+            && request.resource.data.keys().hasAny(['loja'])
+            && ehDono(request.resource.data.loja));
+    }
+
+    function autorAtualizacaoOk() {
+      return request.resource.data.atualizadoPor == request.auth.uid
+        || (request.resource.data.atualizadoPor == 'importado' && ehDono(request.resource.data.loja));
     }
 
     match /lojas/{lojaId} {
@@ -40,23 +65,66 @@ service cloud.firestore {
 
       match /membros/{uid} {
         allow read: if ehMembro(lojaId) || (authed() && request.auth.uid == uid);
-        allow create: if authed() && request.auth.uid == uid && (
+        allow create: if authed() && (
           ehDono(lojaId)
-          || (
-            exists(/databases/$(database)/documents/lojas/$(lojaId))
-            && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid
-          )
-          || (
-            exists(/databases/$(database)/documents/lojas/$(lojaId))
-            && get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails is list
-            && emailAtual() in get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails
-          )
+          || (request.auth.uid == uid && (ehDono(lojaId) || convocado(lojaId)))
         );
+        allow delete: if ehDono(lojaId);
+        allow update: if ehDono(lojaId) || (
+          authed()
+          && request.auth.uid == uid
+          && !bloqueado(lojaId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ultimoAcesso'])
+        );
+      }
+
+      match /configuracao/{docId} {
+        allow read: if ehMembro(lojaId);
+        allow write: if ehDono(lojaId);
+      }
+
+      match /atividades/{docId} {
+        allow read: if ehDono(lojaId);
+        allow create: if ehMembro(lojaId)
+          && request.resource.data.uid == request.auth.uid;
         allow update, delete: if ehDono(lojaId);
       }
 
-      match /{colecao}/{docId} {
-        allow read, write: if ehMembro(lojaId);
+      match /vendas/{docId} {
+        allow read: if ehMembro(lojaId);
+        allow create: if ehMembro(lojaId) && autorCriacaoOk();
+        allow update: if ehMembro(lojaId) && autorAtualizacaoOk();
+        allow delete: if ehMembro(lojaId);
+      }
+      match /produtos/{docId} {
+        allow read: if ehMembro(lojaId);
+        allow create: if ehMembro(lojaId) && autorCriacaoOk();
+        allow update: if ehMembro(lojaId) && autorAtualizacaoOk();
+        allow delete: if ehMembro(lojaId);
+      }
+      match /entregas/{docId} {
+        allow read: if ehMembro(lojaId);
+        allow create: if ehMembro(lojaId) && autorCriacaoOk();
+        allow update: if ehMembro(lojaId) && autorAtualizacaoOk();
+        allow delete: if ehMembro(lojaId);
+      }
+      match /encomendas/{docId} {
+        allow read: if ehMembro(lojaId);
+        allow create: if ehMembro(lojaId) && autorCriacaoOk();
+        allow update: if ehMembro(lojaId) && autorAtualizacaoOk();
+        allow delete: if ehMembro(lojaId);
+      }
+      match /cobrancas/{docId} {
+        allow read: if ehMembro(lojaId);
+        allow create: if ehMembro(lojaId) && autorCriacaoOk();
+        allow update: if ehMembro(lojaId) && autorAtualizacaoOk();
+        allow delete: if ehMembro(lojaId);
+      }
+      match /reabastecimentos/{docId} {
+        allow read: if ehMembro(lojaId);
+        allow create: if ehMembro(lojaId) && autorCriacaoOk();
+        allow update: if ehMembro(lojaId) && autorAtualizacaoOk();
+        allow delete: if ehMembro(lojaId);
       }
     }
   }

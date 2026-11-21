@@ -7,14 +7,17 @@ import {
   getFirebaseConfig,
   getMeta,
   importarDados,
+  listarAtividades,
   listarCobrancas,
   listarEncomendas,
   listarEntregas,
+  listarMembros,
   listarProdutos,
   listarReabastecimentos,
   listarVendas,
   obterConfig,
   salvarConfig,
+  upsertAtividade,
   setFirebaseConfig,
   setMeta,
   upsertCobranca,
@@ -26,10 +29,11 @@ import {
 } from "./lib/db";
 import { agoraIso } from "./lib/datas";
 import { gerarId, montarBackup, normalizarBackup, parseBackup, verificarBackupOficial, type DadosNormalizados } from "./lib/importacao";
-import type { Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FirebaseWebConfig, FormaCobranca, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
+import type { Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FirebaseWebConfig, FormaCobranca, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
 import { configValida, iniciarFirebase } from "./lib/firebase";
-import { sincronizar, type ProgressoSync } from "./lib/sync";
+import { estadoEquipeLocal, sincronizar, type EstadoEquipe, type ProgressoSync } from "./lib/sync";
 import { calcularReabastecimento } from "./lib/reabastecimento";
+import { autoriaAtualizacao, autoriaNova, montarAtividade } from "./lib/autoria";
 
 interface Store {
   pronto: boolean;
@@ -46,7 +50,7 @@ interface Store {
   importarArquivo: (raw: unknown) => Promise<DadosNormalizados>;
   registrarVenda: (valor: number) => Promise<Venda>;
   excluirVenda: (id: string) => Promise<void>;
-  salvarProduto: (p: Omit<Produto, "atualizado_em" | "loja"> & { loja?: string }) => Promise<void>;
+  salvarProduto: (p: Omit<Produto, "atualizado_em" | "loja" | "criadoPor" | "criadoPorEmail" | "atualizadoPor" | "atualizadoPorEmail"> & { loja?: string } & Partial<import("./lib/types").Autoria>) => Promise<void>;
   excluirProduto: (id: string) => Promise<void>;
   salvarEntrega: (e: Partial<Entrega> & Pick<Entrega, "cliente" | "endereco" | "valor">) => Promise<void>;
   statusEntrega: (id: string, status: StatusEntrega) => Promise<void>;
@@ -68,6 +72,11 @@ interface Store {
   progressoSync?: ProgressoSync;
   erroSync?: string;
   tentarSync: () => Promise<void>;
+  ehDono: boolean;
+  bloqueado: boolean;
+  membros: MembroLoja[];
+  atividades: Atividade[];
+  equipe?: EstadoEquipe;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -99,6 +108,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [syncando, setSyncando] = useState(false);
   const [progressoSync, setProgressoSync] = useState<ProgressoSync>();
   const [erroSync, setErroSync] = useState<string>();
+  const [ehDono, setEhDono] = useState(false);
+  const [bloqueado, setBloqueado] = useState(false);
+  const [membros, setMembros] = useState<MembroLoja[]>([]);
+  const [atividades, setAtividades] = useState<Atividade[]>([]);
+  const [equipe, setEquipe] = useState<EstadoEquipe>();
 
   const recarregar = useCallback(async () => {
     const tem = await bancoTemDados();
@@ -112,12 +126,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setPronto(true);
       return;
     }
-    const [v, p, e, en, c, r, cfg, lojaMeta] = await Promise.all([
+    const [v, p, e, en, c, r, cfg, lojaMeta, mem, atv, eq] = await Promise.all([
       listarVendas(), listarProdutos(), listarEntregas(), listarEncomendas(),
       listarCobrancas(10_000), listarReabastecimentos(), obterConfig(), getMeta<string>("loja"),
+      listarMembros(), listarAtividades(), estadoEquipeLocal(),
     ]);
     setVendas(v); setProdutos(p); setEntregas(e); setEncomendas(en);
     setCobrancas(c); setReabastecimentos(r);
+    setMembros(mem); setAtividades(atv);
+    setEquipe(eq);
+    setEhDono(Boolean(eq?.ehDono));
+    setBloqueado(Boolean(eq?.bloqueado));
     const l = lojaMeta || cfg?.loja || "loja";
     setLoja(l);
     setConfig(cfg ?? cfgVazia(l));
@@ -150,36 +169,50 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return dados;
   }, [recarregar]);
 
+
+  const anotar = useCallback(async (acao: "criar" | "editar" | "excluir", colecao: string, registroId: string, resumo: string) => {
+    const a = montarAtividade(loja, usuario, acao, colecao, registroId, resumo);
+    await upsertAtividade(a);
+    setAtividades((xs) => [a, ...xs].slice(0, 500));
+  }, [loja, usuario]);
+
   const registrarVenda = useCallback(async (valor: number) => {
-    const v: Venda = { id: gerarId(), loja, valor, criado_em: agoraIso(), atualizado_em: agoraIso() };
+    const v: Venda = { id: gerarId(), loja, valor, criado_em: agoraIso(), atualizado_em: agoraIso(), ...autoriaNova(usuario) };
     await upsertVenda(v);
     setVendas((xs) => [v, ...xs]);
+    await anotar("criar", "vendas", v.id, `Venda de ${valor.toFixed(2)}`);
     return v;
-  }, [loja]);
+  }, [loja, usuario, anotar]);
 
   const excluirVenda = useCallback(async (id: string) => {
     const atual = vendas.find((x) => x.id === id);
     if (!atual) return;
-    await upsertVenda({ ...atual, excluido: true, atualizado_em: agoraIso() });
+    const row = { ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() };
+    await upsertVenda(row);
     setVendas((xs) => xs.filter((x) => x.id !== id));
-  }, [vendas]);
+    await anotar("excluir", "vendas", id, `Excluiu venda de ${atual.valor.toFixed(2)}`);
+  }, [vendas, usuario, anotar]);
 
-  const salvarProduto = useCallback(async (p: Omit<Produto, "atualizado_em" | "loja"> & { loja?: string }) => {
-    const row: Produto = { ...p, loja: p.loja || loja, atualizado_em: agoraIso() };
+  const salvarProduto = useCallback(async (p: Omit<Produto, "atualizado_em" | "loja" | "criadoPor" | "criadoPorEmail" | "atualizadoPor" | "atualizadoPorEmail"> & { loja?: string } & Partial<import("./lib/types").Autoria>) => {
+    const atual = produtos.find((x) => x.id === p.id);
+    const aut = atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario);
+    const row: Produto = { ...p, ...aut, loja: p.loja || loja, atualizado_em: agoraIso() };
     await upsertProduto(row);
     setProdutos((xs) => {
       const i = xs.findIndex((x) => x.id === row.id);
       if (i < 0) return [...xs, row].sort((a, b) => a.ordem - b.ordem);
       const next = xs.slice(); next[i] = row; return next.sort((a, b) => a.ordem - b.ordem);
     });
-  }, [loja]);
+    await anotar(atual ? "editar" : "criar", "produtos", row.id, `${atual ? "Editou" : "Cadastrou"} ${row.nome}`);
+  }, [loja, produtos, usuario, anotar]);
 
   const excluirProduto = useCallback(async (id: string) => {
     const atual = produtos.find((x) => x.id === id);
     if (!atual) return;
-    await upsertProduto({ ...atual, excluido: true, atualizado_em: agoraIso() });
+    await upsertProduto({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
     setProdutos((xs) => xs.filter((x) => x.id !== id));
-  }, [produtos]);
+    await anotar("excluir", "produtos", id, `Excluiu ${atual.nome}`);
+  }, [produtos, usuario, anotar]);
 
   const salvarEntrega = useCallback(async (e: Partial<Entrega> & Pick<Entrega, "cliente" | "endereco" | "valor">) => {
     const id = e.id || gerarId();
@@ -191,29 +224,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       criado_em: e.criado_em || atual?.criado_em || agoraIso(),
       concluido_em: e.concluido_em ?? atual?.concluido_em ?? null,
       atualizado_em: agoraIso(),
+      ...(atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario)),
     };
     await upsertEntrega(row);
+    await anotar(atual ? "editar" : "criar", "entregas", row.id, `${atual ? "Editou" : "Registrou"} entrega de ${row.cliente}`);
     setEntregas((xs) => [row, ...xs.filter((x) => x.id !== id)]);
-  }, [loja, entregas]);
+  }, [loja, entregas, usuario, anotar]);
 
   const statusEntrega = useCallback(async (id: string, status: StatusEntrega) => {
     const atual = entregas.find((x) => x.id === id);
     if (!atual) return;
     const row: Entrega = {
-      ...atual, status,
+      ...autoriaAtualizacao(atual, usuario), status,
       concluido_em: status === "entregue" ? agoraIso() : null,
       atualizado_em: agoraIso(),
     };
     await upsertEntrega(row);
+    await anotar("editar", "entregas", id, `Status da entrega de ${atual.cliente}: ${status}`);
     setEntregas((xs) => xs.map((x) => x.id === id ? row : x));
-  }, [entregas]);
+  }, [entregas, usuario, anotar]);
 
   const excluirEntrega = useCallback(async (id: string) => {
     const atual = entregas.find((x) => x.id === id);
     if (!atual) return;
-    await upsertEntrega({ ...atual, excluido: true, atualizado_em: agoraIso() });
+    await upsertEntrega({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
     setEntregas((xs) => xs.filter((x) => x.id !== id));
-  }, [entregas]);
+    await anotar("excluir", "entregas", id, `Excluiu entrega de ${atual.cliente}`);
+  }, [entregas, usuario, anotar]);
 
   const salvarEncomenda = useCallback(async (e: Partial<Encomenda> & Pick<Encomenda, "cliente" | "produto" | "valor">) => {
     const id = e.id || gerarId();
@@ -227,25 +264,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       criado_em: e.criado_em || atual?.criado_em || agoraIso(),
       concluido_em: e.concluido_em ?? atual?.concluido_em ?? null,
       atualizado_em: agoraIso(),
+      ...(atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario)),
     };
     await upsertEncomenda(row);
     setEncomendas((xs) => [row, ...xs.filter((x) => x.id !== id)]);
-  }, [loja, encomendas]);
+    await anotar(atual ? "editar" : "criar", "encomendas", row.id, `${atual ? "Editou" : "Registrou"} encomenda de ${row.cliente}`);
+  }, [loja, encomendas, usuario, anotar]);
 
   const concluirEncomenda = useCallback(async (id: string, concluida: boolean) => {
     const atual = encomendas.find((x) => x.id === id);
     if (!atual) return;
-    const row = { ...atual, concluido_em: concluida ? agoraIso() : null, atualizado_em: agoraIso() };
+    const row = { ...autoriaAtualizacao(atual, usuario), concluido_em: concluida ? agoraIso() : null, atualizado_em: agoraIso() };
     await upsertEncomenda(row);
+    await anotar("editar", "encomendas", id, concluida ? `Concluiu encomenda de ${atual.cliente}` : `Reabriu encomenda de ${atual.cliente}`);
     setEncomendas((xs) => xs.map((x) => x.id === id ? row : x));
-  }, [encomendas]);
+  }, [encomendas, usuario, anotar]);
 
   const excluirEncomenda = useCallback(async (id: string) => {
     const atual = encomendas.find((x) => x.id === id);
     if (!atual) return;
-    await upsertEncomenda({ ...atual, excluido: true, atualizado_em: agoraIso() });
+    await upsertEncomenda({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
     setEncomendas((xs) => xs.filter((x) => x.id !== id));
-  }, [encomendas]);
+    await anotar("excluir", "encomendas", id, `Excluiu encomenda de ${atual.cliente}`);
+  }, [encomendas, usuario, anotar]);
 
   const registrarReabastecimento = useCallback(async (r: { produtoId: string | null; produto: string; unidade: string | null; quantidade: number; valorTotal: number; margem: number }) => {
     const calc = calcularReabastecimento(r.valorTotal, r.quantidade, r.margem);
@@ -254,18 +295,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       quantidade: r.quantidade, valor_total: r.valorTotal, margem: r.margem,
       custo_unitario: calc.custo_unitario, preco_sugerido: calc.preco_sugerido,
       criado_em: agoraIso(), atualizado_em: agoraIso(),
+      ...autoriaNova(usuario),
     };
     await upsertReabastecimento(row);
     setReabastecimentos((xs) => [row, ...xs]);
+    await anotar("criar", "reabastecimentos", row.id, `Reabasteceu ${row.produto}`);
     return row;
-  }, [loja]);
+  }, [loja, usuario, anotar]);
 
   const excluirReabastecimento = useCallback(async (id: string) => {
     const atual = reabastecimentos.find((x) => x.id === id);
     if (!atual) return;
-    await upsertReabastecimento({ ...atual, excluido: true, atualizado_em: agoraIso() });
+    await upsertReabastecimento({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
     setReabastecimentos((xs) => xs.filter((x) => x.id !== id));
-  }, [reabastecimentos]);
+    await anotar("excluir", "reabastecimentos", id, `Excluiu reabastecimento de ${atual.produto}`);
+  }, [reabastecimentos, usuario, anotar]);
 
   const registrarCobranca = useCallback(async (valor: number, provedor: Cobranca["provedor"], forma: FormaCobranca) => {
     const row: Cobranca = {
@@ -273,11 +317,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       referencia: null,
       mensagem: "Registro manual (sem envio à maquininha).",
       modo_teste: true, venda_id: null, criado_em: agoraIso(), pago_em: null, atualizado_em: agoraIso(),
+      ...autoriaNova(usuario),
     };
     await upsertCobranca(row);
     setCobrancas((xs) => [row, ...xs]);
+    await anotar("criar", "cobrancas", row.id, `Cobrança de ${valor.toFixed(2)}`);
     return row;
-  }, [loja]);
+  }, [loja, usuario, anotar]);
 
   const confirmarCobranca = useCallback(async (id: string) => {
     const atual = cobrancas.find((x) => x.id === id);
@@ -287,18 +333,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const v = await registrarVenda(atual.valor);
       vendaId = v.id;
     }
-    const row: Cobranca = { ...atual, status: "paga", pago_em: agoraIso(), venda_id: vendaId, mensagem: "Pagamento confirmado.", atualizado_em: agoraIso() };
+    const row: Cobranca = { ...autoriaAtualizacao(atual, usuario), status: "paga", pago_em: agoraIso(), venda_id: vendaId, mensagem: "Pagamento confirmado.", atualizado_em: agoraIso() };
     await upsertCobranca(row);
+    await anotar("editar", "cobrancas", id, `Confirmou cobrança de ${atual.valor.toFixed(2)}`);
     setCobrancas((xs) => xs.map((x) => x.id === id ? row : x));
-  }, [cobrancas, registrarVenda]);
+  }, [cobrancas, registrarVenda, usuario, anotar]);
 
   const cancelarCobranca = useCallback(async (id: string) => {
     const atual = cobrancas.find((x) => x.id === id);
     if (!atual || atual.status !== "aguardando") return;
-    const row: Cobranca = { ...atual, status: "cancelada", mensagem: "Cobrança cancelada.", atualizado_em: agoraIso() };
+    const row: Cobranca = { ...autoriaAtualizacao(atual, usuario), status: "cancelada", mensagem: "Cobrança cancelada.", atualizado_em: agoraIso() };
     await upsertCobranca(row);
+    await anotar("editar", "cobrancas", id, `Cancelou cobrança de ${atual.valor.toFixed(2)}`);
     setCobrancas((xs) => xs.map((x) => x.id === id ? row : x));
-  }, [cobrancas]);
+  }, [cobrancas, usuario, anotar]);
 
   const atualizarConfig = useCallback(async (c: Partial<ConfiguracaoLoja>) => {
     const row = { ...config, ...c, loja, atualizado_em: agoraIso() };
@@ -318,7 +366,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!usuario || !online || !configValida(firebaseCfg)) return;
     setSyncando(true); setErroSync(undefined);
     try {
-      await sincronizar(loja, usuario, setProgressoSync);
+      const estado = await sincronizar(loja, usuario, setProgressoSync);
+      setEquipe(estado);
+      setEhDono(estado.ehDono);
+      setBloqueado(estado.bloqueado);
       await recarregar();
     } catch (e) {
       setErroSync(e instanceof Error ? e.message : "Falha na sincronização.");
@@ -337,11 +388,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, excluirEncomenda,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
     atualizarConfig, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync,
+    ehDono, bloqueado, membros, atividades, equipe,
   }), [pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, excluirEncomenda,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync]);
+    atualizarConfig, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync,
+    ehDono, bloqueado, membros, atividades, equipe]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

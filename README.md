@@ -35,6 +35,12 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 O passo a passo está no aplicativo, em **Mais → Ajustes → Guia**, e também no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Em resumo: você cria o projeto, ativa Firestore e Authentication, cola a configuração web no app e publica as regras de `rules/firestore.rules`. Só quem entra com uma conta autorizada da loja consegue ler ou gravar na nuvem.
 
+A primeira conta que entrar vira a dona da loja. As outras pessoas são adicionadas por e-mail no painel **Mais → Administração**. Elas usam o aplicativo normalmente. Só a dona gerencia a equipe, vê o registro de atividades, o faturamento por pessoa e altera as configurações da loja. Não há cargos.
+
+## Aplicativo Android
+
+O APK de cada versão fica em [Releases](https://github.com/rafaelytofc7-spec/controle-de-vendas/releases). No Firebase, inclua `localhost` nos domínios autorizados. No Android, use e-mail e senha (o login com o Google em geral não abre a janela de conta no WebView). Importe o backup pelo seletor de arquivos do aparelho; o histórico da loja **não** vem embutido no APK.
+
 ## Testes
 
 ```bash

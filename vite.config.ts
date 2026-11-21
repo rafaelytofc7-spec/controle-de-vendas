@@ -2,11 +2,14 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+const capacitor = process.env.CAPACITOR === "1";
+const base = capacitor ? "./" : "/controle-de-vendas/";
+
 export default defineConfig({
-  base: "/controle-de-vendas/",
+  base,
   plugins: [
     react(),
-    VitePWA({
+    ...(!capacitor ? [VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "icon-192.png", "icon-512.png"],
       manifest: {
@@ -18,8 +21,8 @@ export default defineConfig({
         display: "standalone",
         orientation: "portrait",
         lang: "pt-BR",
-        start_url: "/controle-de-vendas/",
-        scope: "/controle-de-vendas/",
+        start_url: capacitor ? "./" : "/controle-de-vendas/",
+        scope: capacitor ? "./" : "/controle-de-vendas/",
         icons: [
           { src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
           { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
@@ -27,7 +30,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2,json}"],
-        navigateFallback: "/controle-de-vendas/index.html",
+        navigateFallback: capacitor ? "./index.html" : "/controle-de-vendas/index.html",
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/(firestore|firebase|identitytoolkit|securetoken)\.googleapis\.com\//,
@@ -43,7 +46,7 @@ export default defineConfig({
           },
         ],
       },
-    }),
+    })] : []),
   ],
   server: { port: 5173, host: "127.0.0.1" },
   preview: { port: 4173, host: "127.0.0.1" },

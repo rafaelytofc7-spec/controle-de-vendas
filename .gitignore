@@ -12,3 +12,21 @@ test-results
 **/*importacao*.json
 **/caixa-importacao*.json
 backup-*/
+
+# Android / Capacitor local
+android/app/build
+android/build
+android/.gradle
+android/local.properties
+android/captures
+android/*.iml
+android/.idea
+*.jks
+keystore.properties
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+
+android/**/build/
+android/.gradle/
+android/local.properties

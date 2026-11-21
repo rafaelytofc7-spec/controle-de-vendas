@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
@@ -9,13 +9,15 @@ import {
 import { useStore, exportarDados, montarBackup } from "../store";
 import { verificarBackupOficial } from "../lib/importacao";
 import { configValida, iniciarFirebase } from "../lib/firebase";
-import { baixarArquivo, carregarBackupDoDrive, carregarGis, obterTokenDrive, salvarBackupNoDrive } from "../lib/drive";
+import { carregarBackupDoDrive, carregarGis, obterTokenDrive, salvarBackupNoDrive } from "../lib/drive";
 import type { FirebaseWebConfig } from "../lib/types";
 import { GUIA_FIREBASE } from "../lib/guia";
+import { ehNativo, exportarArquivo } from "../lib/plataforma";
+import { APP_VERSION, APK_RELEASE_URL, buscarVersaoRemota, temAtualizacao } from "../lib/versao";
 
 export function Ajustes() {
   const store = useStore();
-  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync, importarArquivo } = store;
+  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync, importarArquivo, ehDono } = store;
   const [tab, setTab] = useState<"loja" | "backup" | "nuvem" | "guia">("loja");
   const [nome, setNome] = useState(config.nome_loja);
   const [tel, setTel] = useState(config.telefone);
@@ -28,8 +30,20 @@ export function Ajustes() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [busy, setBusy] = useState(false);
+  const [versaoRemota, setVersaoRemota] = useState<string>();
+  const nativo = ehNativo();
+  const podeEditarLoja = ehDono || !usuario;
+
+  useEffect(() => {
+    const ac = new AbortController();
+    void buscarVersaoRemota(ac.signal).then((info) => {
+      if (info?.version) setVersaoRemota(info.version);
+    });
+    return () => ac.abort();
+  }, []);
 
   async function salvarLoja() {
+    if (!podeEditarLoja) { setAviso("Só a pessoa dona altera as configurações da loja."); return; }
     await atualizarConfig({
       nome_loja: nome, telefone: tel, mensagem_cardapio: msg,
       taxa_entrega: Number(taxa.replace(",", ".")) || 0, observacoes: obs, loja: codigo.trim() || loja,
@@ -41,8 +55,10 @@ export function Ajustes() {
     const dados = await exportarDados();
     const json = JSON.stringify(montarBackup(dados), null, 2);
     const nomeArq = `controle-de-vendas-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    baixarArquivo(nomeArq, json);
-    setAviso("Arquivo baixado. Guarde em um lugar seguro.");
+    const como = await exportarArquivo(nomeArq, json);
+    setAviso(como === "share"
+      ? "Escolha onde guardar ou compartilhar o arquivo."
+      : "Arquivo baixado. Guarde em um lugar seguro.");
   }
 
   async function importar(f: File | null) {
@@ -137,21 +153,22 @@ export function Ajustes() {
       {tab === "loja" && (
         <div className="card col">
           <h3>Dados da loja</h3>
-          <label className="field">Nome da loja<input className="input" value={nome} onChange={(e) => setNome(e.target.value)} /></label>
-          <label className="field">WhatsApp / telefone<input className="input" value={tel} onChange={(e) => setTel(e.target.value)} /></label>
-          <label className="field">Mensagem do cardápio<textarea className="input" value={msg} onChange={(e) => setMsg(e.target.value)} /></label>
-          <label className="field">Taxa de entrega<input className="input num" value={taxa} onChange={(e) => setTaxa(e.target.value)} /></label>
-          <label className="field">Observações<textarea className="input" value={obs} onChange={(e) => setObs(e.target.value)} /></label>
-          <label className="field">Código da loja (usado na nuvem)<input className="input" value={codigo} onChange={(e) => setCodigo(e.target.value)} /></label>
-          <button className="btn btn-primary" onClick={() => void salvarLoja()}>Salvar</button>
+          {!podeEditarLoja && <p className="muted">Só a pessoa dona altera as configurações da loja. Você continua usando o caixa, o cardápio e as entregas normalmente.</p>}
+          <label className="field">Nome da loja<input className="input" value={nome} disabled={!podeEditarLoja} onChange={(e) => setNome(e.target.value)} /></label>
+          <label className="field">WhatsApp / telefone<input className="input" value={tel} disabled={!podeEditarLoja} onChange={(e) => setTel(e.target.value)} /></label>
+          <label className="field">Mensagem do cardápio<textarea className="input" value={msg} disabled={!podeEditarLoja} onChange={(e) => setMsg(e.target.value)} /></label>
+          <label className="field">Taxa de entrega<input className="input num" value={taxa} disabled={!podeEditarLoja} onChange={(e) => setTaxa(e.target.value)} /></label>
+          <label className="field">Observações<textarea className="input" value={obs} disabled={!podeEditarLoja} onChange={(e) => setObs(e.target.value)} /></label>
+          <label className="field">Código da loja (usado na nuvem)<input className="input" value={codigo} disabled={!podeEditarLoja} onChange={(e) => setCodigo(e.target.value)} /></label>
+          {podeEditarLoja && <button className="btn btn-primary" onClick={() => void salvarLoja()}>Salvar</button>}
         </div>
       )}
       {tab === "backup" && (
         <div className="card col">
           <h3>Backup</h3>
-          <p className="muted">Baixe um arquivo JSON com tudo que está neste aparelho, ou restaure a partir de um arquivo. Isso funciona offline, sem Google Drive.</p>
-          <button className="btn btn-primary" onClick={() => void exportar()}>Baixar arquivo de backup</button>
-          <label className="field">Importar arquivo
+          <p className="muted">Exporte um arquivo JSON com tudo que está neste aparelho, ou restaure a partir de um arquivo (incluindo o backup que você já recebeu). Isso funciona offline, sem Google Drive. O histórico da loja não vem embutido no aplicativo.</p>
+          <button className="btn btn-primary" onClick={() => void exportar()}>{nativo ? "Exportar / compartilhar backup" : "Baixar arquivo de backup"}</button>
+          <label className="field">Importar arquivo do aparelho
             <input className="input" type="file" accept="application/json,.json" disabled={busy} onChange={(e) => void importar(e.target.files?.[0] ?? null)} />
           </label>
           <hr style={{ border: 0, borderTop: "1px solid var(--linha)", margin: "8px 0" }} />
@@ -164,7 +181,8 @@ export function Ajustes() {
       {tab === "nuvem" && (
         <div className="card col">
           <h3>Firebase</h3>
-          <p className="muted">Cole o objeto de configuração web do Firebase. Ele fica só neste aparelho. Em seguida entre com e-mail ou Google para sincronizar.</p>
+          <p className="muted">Cole o objeto de configuração web do Firebase. Ele fica só neste aparelho. A primeira conta que entrar vira a dona da loja. As demais pessoas entram com e-mail e senha depois de serem convidadas.</p>
+          {nativo && <p className="muted small">No aplicativo Android, use e-mail e senha. O login com o Google em geral não abre a janela de conta neste WebView. No Firebase, inclua <strong>localhost</strong> em Domínios autorizados.</p>}
           <textarea className="input mono" value={cfgTxt} onChange={(e) => setCfgTxt(e.target.value)} placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "...", "googleClientId": "....apps.googleusercontent.com" }' />
           <button className="btn btn-primary" onClick={() => void salvarCfgFb()}>Salvar configuração</button>
           {configValida(firebaseCfg) && (
@@ -185,7 +203,8 @@ export function Ajustes() {
                     <button className="btn grow" disabled={busy} onClick={() => void loginEmail(false)}>Entrar</button>
                     <button className="btn grow" disabled={busy} onClick={() => void loginEmail(true)}>Criar conta</button>
                   </div>
-                  <button className="btn btn-lima btn-block" disabled={busy} onClick={() => void loginGoogle()}>Entrar com o Google</button>
+                  {!nativo && <button className="btn btn-lima btn-block" disabled={busy} onClick={() => void loginGoogle()}>Entrar com o Google</button>}
+                  {nativo && <p className="muted small">O botão do Google não aparece no aplicativo Android porque a janela de login costuma falhar. Use e-mail e senha.</p>}
                 </>
               )}
             </>
@@ -198,6 +217,14 @@ export function Ajustes() {
           <pre className="guia">{GUIA_FIREBASE}</pre>
         </div>
       )}
+      <p className="muted small" style={{ marginTop: 16 }}>
+        Versão {APP_VERSION}
+        {versaoRemota ? (temAtualizacao(APP_VERSION, versaoRemota)
+          ? ` · Há uma versão nova (${versaoRemota}). `
+          : " · Você está na versão mais recente. ")
+          : " · "}
+        <a href={APK_RELEASE_URL} target="_blank" rel="noreferrer">Baixar APK</a>
+      </p>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -16,25 +17,31 @@ import type { User } from "firebase/auth";
 import { getFirebase } from "./firebase";
 import {
   getMeta,
+  listarAtividades,
   listarCobrancas,
   listarEncomendas,
   listarEntregas,
+  listarMembros,
   listarPendentes,
   listarProdutos,
   listarReabastecimentos,
   listarVendas,
   limparPendente,
   obterConfig,
+  removerMembroLocal,
   setMeta,
+  upsertAtividade,
   upsertCobranca,
   upsertEncomenda,
   upsertEntrega,
+  upsertMembro,
   upsertProduto,
   upsertReabastecimento,
   upsertVenda,
   salvarConfig,
 } from "./db";
-import type { Cobranca, Encomenda, Entrega, Produto, Reabastecimento, Venda } from "./types";
+import type { Atividade, Cobranca, Encomenda, Entrega, MembroLoja, Produto, Reabastecimento, Venda } from "./types";
+import { agoraIso } from "./datas";
 
 const LOTE = 400;
 
@@ -44,40 +51,145 @@ export interface ProgressoSync {
   total: number;
 }
 
-export async function garantirMembro(loja: string, user: User): Promise<void> {
+export interface EstadoEquipe {
+  ehDono: boolean;
+  bloqueado: boolean;
+  ownerUid: string;
+  ownerEmail: string;
+  membrosEmails: string[];
+}
+
+function emailNorm(email?: string | null): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+export async function garantirMembro(loja: string, user: User): Promise<EstadoEquipe> {
   const { db } = getFirebase();
   const lojaRef = doc(db, "lojas", loja);
   const snap = await getDoc(lojaRef);
+  const agora = agoraIso();
+  const email = emailNorm(user.email);
+
   if (!snap.exists()) {
     await setDoc(lojaRef, {
       ownerUid: user.uid,
-      ownerEmail: user.email ?? "",
-      criado_em: new Date().toISOString(),
+      ownerEmail: email,
+      membrosEmails: email ? [email] : [],
+      criado_em: agora,
     });
-    await setDoc(doc(db, "lojas", loja, "membros", user.uid), {
-      email: user.email ?? "",
-      papel: "dono",
-      criado_em: new Date().toISOString(),
-    });
-    return;
+    const membro: MembroLoja = {
+      uid: user.uid,
+      email,
+      bloqueado: false,
+      ultimoAcesso: agora,
+      criado_em: agora,
+    };
+    await setDoc(doc(db, "lojas", loja, "membros", user.uid), membro);
+    await upsertMembro(membro);
+    const estado: EstadoEquipe = {
+      ehDono: true,
+      bloqueado: false,
+      ownerUid: user.uid,
+      ownerEmail: email,
+      membrosEmails: email ? [email] : [],
+    };
+    await cacheEstado(estado);
+    return estado;
   }
+
+  const data = snap.data() as { ownerUid?: string; ownerEmail?: string; membrosEmails?: string[] };
+  const ownerUid = data.ownerUid ?? "";
+  const ownerEmail = emailNorm(data.ownerEmail);
+  const membrosEmails = Array.isArray(data.membrosEmails) ? data.membrosEmails.map(emailNorm) : [];
+  const ehDono = ownerUid === user.uid;
+  const convocado = Boolean(email && membrosEmails.includes(email));
   const membroRef = doc(db, "lojas", loja, "membros", user.uid);
-  const membro = await getDoc(membroRef);
-  if (!membro.exists()) {
-    const data = snap.data() as { ownerUid?: string; membrosEmails?: string[] };
-    const email = (user.email ?? "").toLowerCase();
-    const permitido =
-      data.ownerUid === user.uid ||
-      (Array.isArray(data.membrosEmails) && data.membrosEmails.map((e) => e.toLowerCase()).includes(email));
-    if (!permitido) {
-      throw new Error("Sua conta não tem permissão nesta loja. Peça ao dono para adicionar o seu e-mail.");
+  const membroSnap = await getDoc(membroRef);
+
+  if (membroSnap.exists() && membroSnap.data().bloqueado === true) {
+    const estado: EstadoEquipe = { ehDono, bloqueado: true, ownerUid, ownerEmail, membrosEmails };
+    await cacheEstado(estado);
+    throw new Error("Sua conta foi bloqueada nesta loja. Fale com a pessoa dona do aplicativo.");
+  }
+
+  if (!membroSnap.exists()) {
+    if (!ehDono && !convocado) {
+      throw new Error("Sua conta não tem permissão nesta loja. Peça à pessoa dona para adicionar o seu e-mail.");
     }
-    await setDoc(membroRef, {
-      email: user.email ?? "",
-      papel: data.ownerUid === user.uid ? "dono" : "equipe",
-      criado_em: new Date().toISOString(),
+    const membro: MembroLoja = {
+      uid: user.uid,
+      email,
+      bloqueado: false,
+      ultimoAcesso: agora,
+      criado_em: agora,
+    };
+    await setDoc(membroRef, membro);
+    await upsertMembro(membro);
+  } else {
+    await setDoc(membroRef, { ultimoAcesso: agora }, { merge: true });
+    const atual = membroSnap.data() as MembroLoja;
+    await upsertMembro({
+      uid: user.uid,
+      email: emailNorm(atual.email) || email,
+      bloqueado: Boolean(atual.bloqueado),
+      ultimoAcesso: agora,
+      criado_em: atual.criado_em || agora,
     });
   }
+
+  const estado: EstadoEquipe = { ehDono, bloqueado: false, ownerUid, ownerEmail, membrosEmails };
+  await cacheEstado(estado);
+  return estado;
+}
+
+async function cacheEstado(estado: EstadoEquipe): Promise<void> {
+  await setMeta("equipe", estado);
+}
+
+export async function estadoEquipeLocal(): Promise<EstadoEquipe | undefined> {
+  return getMeta<EstadoEquipe>("equipe");
+}
+
+export async function convidarMembro(loja: string, emailBruto: string): Promise<void> {
+  const email = emailNorm(emailBruto);
+  if (!email || !email.includes("@")) throw new Error("Informe um e-mail válido.");
+  const { db } = getFirebase();
+  const lojaRef = doc(db, "lojas", loja);
+  const snap = await getDoc(lojaRef);
+  if (!snap.exists()) throw new Error("A loja ainda não existe na nuvem. Entre e sincronize primeiro.");
+  const data = snap.data() as { membrosEmails?: string[] };
+  const emails = Array.isArray(data.membrosEmails) ? data.membrosEmails.map(emailNorm) : [];
+  if (!emails.includes(email)) emails.push(email);
+  await setDoc(lojaRef, { membrosEmails: emails }, { merge: true });
+  await setMeta("equipe", { ...(await estadoEquipeLocal()), membrosEmails: emails });
+}
+
+export async function bloquearMembro(loja: string, uid: string, bloqueado: boolean): Promise<void> {
+  const { db } = getFirebase();
+  const ref = doc(db, "lojas", loja, "membros", uid);
+  await setDoc(ref, { bloqueado }, { merge: true });
+  const locais = await listarMembros();
+  const atual = locais.find((m) => m.uid === uid);
+  if (atual) await upsertMembro({ ...atual, bloqueado });
+}
+
+export async function removerMembro(loja: string, uid: string, email?: string): Promise<void> {
+  const { db } = getFirebase();
+  await deleteDoc(doc(db, "lojas", loja, "membros", uid));
+  if (email) {
+    const lojaRef = doc(db, "lojas", loja);
+    const snap = await getDoc(lojaRef);
+    if (snap.exists()) {
+      const data = snap.data() as { membrosEmails?: string[] };
+      const emails = (Array.isArray(data.membrosEmails) ? data.membrosEmails : [])
+        .map(emailNorm)
+        .filter((e) => e !== emailNorm(email));
+      await setDoc(lojaRef, { membrosEmails: emails }, { merge: true });
+      const eq = await estadoEquipeLocal();
+      if (eq) await setMeta("equipe", { ...eq, membrosEmails: emails });
+    }
+  }
+  await removerMembroLocal(uid);
 }
 
 async function escreverLote(itens: Array<{ path: string[]; data: DocumentData }>) {
@@ -92,7 +204,13 @@ async function escreverLote(itens: Array<{ path: string[]; data: DocumentData }>
   }
 }
 
-export async function uploadInicial(loja: string, onProg?: (p: ProgressoSync) => void): Promise<void> {
+export async function uploadInicial(
+  loja: string,
+  user: User,
+  onProg?: (p: ProgressoSync) => void,
+): Promise<void> {
+  const estado = await estadoEquipeLocal();
+  const ehDono = estado?.ehDono ?? true;
   const vendas = await listarVendas();
   const produtos = await listarProdutos();
   const entregas = await listarEntregas();
@@ -101,7 +219,7 @@ export async function uploadInicial(loja: string, onProg?: (p: ProgressoSync) =>
   const reab = await listarReabastecimentos();
   const cfg = await obterConfig();
   const itens: Array<{ path: string[]; data: DocumentData }> = [];
-  if (cfg) itens.push({ path: ["lojas", loja, "configuracao", "atual"], data: cfg });
+  if (cfg && ehDono) itens.push({ path: ["lojas", loja, "configuracao", "atual"], data: cfg });
   for (const v of vendas) itens.push({ path: ["lojas", loja, "vendas", v.id], data: v });
   for (const p of produtos) itens.push({ path: ["lojas", loja, "produtos", p.id], data: p });
   for (const e of entregas) itens.push({ path: ["lojas", loja, "entregas", e.id], data: e });
@@ -117,6 +235,7 @@ export async function uploadInicial(loja: string, onProg?: (p: ProgressoSync) =>
   }
   await setMeta("precisa_upload_inicial", false);
   await setMeta("ultimo_sync", new Date().toISOString());
+  void user;
 }
 
 async function puxarColecao(loja: string, colecao: string) {
@@ -137,7 +256,7 @@ async function puxarColecao(loja: string, colecao: string) {
   return out;
 }
 
-function maisNovo(local?: string, remoto?: string): "local" | "remoto" | "igual" {
+function maisNovo(local?: string | null, remoto?: string | null): "local" | "remoto" | "igual" {
   if (!remoto && !local) return "igual";
   if (!remoto) return "local";
   if (!local) return "remoto";
@@ -147,7 +266,7 @@ function maisNovo(local?: string, remoto?: string): "local" | "remoto" | "igual"
 }
 
 export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => void): Promise<void> {
-  onProg?.({ fase: "baixando", feito: 0, total: 6 });
+  onProg?.({ fase: "baixando", feito: 0, total: 8 });
   const mapas = {
     vendas: new Map((await listarVendas()).map((x) => [x.id, x])),
     produtos: new Map((await listarProdutos()).map((x) => [x.id, x])),
@@ -164,35 +283,35 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
       await upsertVenda(r as Venda, false);
     }
   }
-  onProg?.({ fase: "baixando", feito: 1, total: 6 });
+  onProg?.({ fase: "baixando", feito: 1, total: 8 });
   for (const r of await puxarColecao(loja, "produtos")) {
     const local = mapas.produtos.get(r.id);
     if (maisNovo(local?.atualizado_em, r.atualizado_em) === "remoto" || !local) {
       await upsertProduto(r as Produto, false);
     }
   }
-  onProg?.({ fase: "baixando", feito: 2, total: 6 });
+  onProg?.({ fase: "baixando", feito: 2, total: 8 });
   for (const r of await puxarColecao(loja, "entregas")) {
     const local = mapas.entregas.get(r.id);
     if (maisNovo(local?.atualizado_em, r.atualizado_em) === "remoto" || !local) {
       await upsertEntrega(r as Entrega, false);
     }
   }
-  onProg?.({ fase: "baixando", feito: 3, total: 6 });
+  onProg?.({ fase: "baixando", feito: 3, total: 8 });
   for (const r of await puxarColecao(loja, "encomendas")) {
     const local = mapas.encomendas.get(r.id);
     if (maisNovo(local?.atualizado_em, r.atualizado_em) === "remoto" || !local) {
       await upsertEncomenda(r as Encomenda, false);
     }
   }
-  onProg?.({ fase: "baixando", feito: 4, total: 6 });
+  onProg?.({ fase: "baixando", feito: 4, total: 8 });
   for (const r of await puxarColecao(loja, "cobrancas")) {
     const local = mapas.cobrancas.get(r.id);
     if (maisNovo(local?.atualizado_em, r.atualizado_em) === "remoto" || !local) {
       await upsertCobranca(r as Cobranca, false);
     }
   }
-  onProg?.({ fase: "baixando", feito: 5, total: 6 });
+  onProg?.({ fase: "baixando", feito: 5, total: 8 });
   for (const r of await puxarColecao(loja, "reabastecimentos")) {
     const local = mapas.reabastecimentos.get(r.id);
     if (maisNovo(local?.atualizado_em, r.atualizado_em) === "remoto" || !local) {
@@ -204,14 +323,54 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
   if (cfgSnap.exists()) {
     const remoto = cfgSnap.data();
     const local = await obterConfig();
-    if (maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
+    const eq = await estadoEquipeLocal();
+    const forcarRemoto = eq && !eq.ehDono;
+    if (forcarRemoto || maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
       await salvarConfig(remoto as never, false);
     }
   }
-  onProg?.({ fase: "baixando", feito: 6, total: 6 });
+  onProg?.({ fase: "baixando", feito: 6, total: 8 });
+
+  const membrosR = await puxarColecao(loja, "membros");
+  const vistos = new Set<string>();
+  for (const r of membrosR) {
+    const uid = String(r.uid || r.id);
+    vistos.add(uid);
+    await upsertMembro({
+      uid,
+      email: emailNorm(r.email),
+      bloqueado: Boolean(r.bloqueado),
+      ultimoAcesso: r.ultimoAcesso ?? null,
+      criado_em: r.criado_em || agoraIso(),
+    });
+  }
+  for (const local of await listarMembros()) {
+    if (!vistos.has(local.uid)) await removerMembroLocal(local.uid);
+  }
+  onProg?.({ fase: "baixando", feito: 7, total: 8 });
+
+  try {
+    const atividadesR = await puxarColecao(loja, "atividades");
+    for (const r of atividadesR) {
+      await upsertAtividade({
+        id: String(r.id),
+        loja,
+        uid: String(r.uid ?? ""),
+        email: emailNorm(r.email),
+        acao: r.acao,
+        colecao: String(r.colecao ?? ""),
+        registroId: String(r.registroId ?? ""),
+        resumo: String(r.resumo ?? ""),
+        em: String(r.em ?? ""),
+      } as Atividade, false);
+    }
+  } catch {
+    // only the owner can read the activity log
+  }
+  onProg?.({ fase: "baixando", feito: 8, total: 8 });
 }
 
-export async function enviarPendentes(loja: string): Promise<number> {
+export async function enviarPendentes(loja: string, ehDono: boolean): Promise<number> {
   const { db } = getFirebase();
   const pendentes = await listarPendentes();
   if (!pendentes.length) return 0;
@@ -221,10 +380,11 @@ export async function enviarPendentes(loja: string): Promise<number> {
   const encomendas = new Map((await listarEncomendas()).map((x) => [x.id, x]));
   const cobrancas = new Map((await listarCobrancas(10_000)).map((x) => [x.id, x]));
   const reab = new Map((await listarReabastecimentos()).map((x) => [x.id, x]));
+  const atividades = new Map((await listarAtividades(2000)).map((x) => [x.id, x]));
   const cfg = await obterConfig();
 
   const mapa: Record<string, Map<string, unknown> | undefined> = {
-    vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos: reab,
+    vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos: reab, atividades,
   };
 
   for (let i = 0; i < pendentes.length; i += LOTE) {
@@ -232,7 +392,7 @@ export async function enviarPendentes(loja: string): Promise<number> {
     const batch = writeBatch(db);
     for (const p of fatia) {
       if (p.colecao === "configuracao") {
-        if (cfg) batch.set(doc(db, "lojas", loja, "configuracao", "atual"), cfg, { merge: true });
+        if (ehDono && cfg) batch.set(doc(db, "lojas", loja, "configuracao", "atual"), cfg, { merge: true });
         continue;
       }
       const store = mapa[p.colecao];
@@ -254,20 +414,20 @@ export async function sincronizar(
   loja: string,
   user: User,
   onProg?: (p: ProgressoSync) => void,
-): Promise<void> {
-  await garantirMembro(loja, user);
+): Promise<EstadoEquipe> {
+  const estado = await garantirMembro(loja, user);
   const precisa = await getMeta<boolean>("precisa_upload_inicial");
   if (precisa) {
-    await uploadInicial(loja, onProg);
+    await uploadInicial(loja, user, onProg);
   } else {
-    await enviarPendentes(loja);
+    await enviarPendentes(loja, estado.ehDono);
     await puxarRemoto(loja, onProg);
-    await enviarPendentes(loja);
+    await enviarPendentes(loja, estado.ehDono);
   }
   await setMeta("ultimo_sync", new Date().toISOString());
+  return estado;
 }
 
-// silence unused import if tree-shaken; query/where kept for future filtered pull
 void query;
 void where;
 void limit;

@@ -3,13 +3,19 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import "./styles.css";
-import { registerSW } from "virtual:pwa-register";
-registerSW({ immediate: true });
 
+const base = import.meta.env.BASE_URL;
+const basename = base === "./" ? undefined : base.replace(/\/$/, "");
+
+if (base !== "./") {
+  void import("virtual:pwa-register")
+    .then(({ registerSW }) => registerSW({ immediate: true }))
+    .catch(() => { /* PWA plugin ausente no build Android */ });
+}
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <BrowserRouter basename="/controle-de-vendas">
+    <BrowserRouter basename={basename}>
       <App />
     </BrowserRouter>
   </React.StrictMode>,
