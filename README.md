@@ -46,3 +46,7 @@ npm run test:e2e  # precisa do backup privado no caminho local de desenvolviment
 ## Licença
 
 Uso privado do dono do repositório.
+
+## Publicação
+
+O site é publicado na branch `gh-pages`. O arquivo `docs/github-pages-workflow.yml` pode ser usado depois, se o token do GitHub tiver permissão de workflow.
