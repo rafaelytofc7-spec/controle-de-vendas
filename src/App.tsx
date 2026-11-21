@@ -3,6 +3,7 @@ import { StoreProvider, useStore } from "./store";
 import { PrimeiraExecucao } from "./pages/PrimeiraExecucao";
 import { Calculadora } from "./pages/Calculadora";
 import { LivroCaixa } from "./pages/LivroCaixa";
+import { Relatorios, RelatorioMes } from "./pages/Relatorios";
 import { Cardapio } from "./pages/Cardapio";
 import { Entregas } from "./pages/Entregas";
 import { Encomendas } from "./pages/Encomendas";
@@ -19,6 +20,7 @@ import { Icone } from "./components/Icone";
 const TITULOS: Record<string, { t: string; s: string }> = {
   "/": { t: "Nova venda", s: "Calculadora" },
   "/caixa": { t: "Livro caixa", s: "Faturamento" },
+  "/relatorios": { t: "Relatórios", s: "Totais por mês" },
   "/cardapio": { t: "Cardápio", s: "Preços e promoções" },
   "/entregas": { t: "Entregas", s: "Saídas" },
   "/encomendas": { t: "Encomendas", s: "Pedidos reservados" },
@@ -32,7 +34,9 @@ const TITULOS: Record<string, { t: string; s: string }> = {
 function Shell() {
   const { pronto, temDados, config, online, syncando, usuario, ehDono, bloqueado } = useStore();
   const loc = useLocation();
-  const meta = TITULOS[loc.pathname] ?? { t: "Controle de Vendas", s: "" };
+  const meta = loc.pathname.startsWith("/relatorios/")
+    ? { t: "Relatório do mês", s: "Totais por dia" }
+    : (TITULOS[loc.pathname] ?? { t: "Controle de Vendas", s: "" });
   const [atualizacao, setAtualizacao] = useState<string>();
   const [tema, setTema] = useState<Tema>(() => lerTema());
 
@@ -86,6 +90,8 @@ function Shell() {
         <Routes>
           <Route path="/" element={<Calculadora />} />
           <Route path="/caixa" element={<LivroCaixa />} />
+          <Route path="/relatorios" element={<Relatorios />} />
+          <Route path="/relatorios/:mes" element={<RelatorioMes />} />
           <Route path="/cardapio" element={<Cardapio />} />
           <Route path="/entregas" element={<Entregas />} />
           <Route path="/encomendas" element={<Encomendas />} />
@@ -104,6 +110,10 @@ function Shell() {
         <NavLink to="/caixa" className={({ isActive }) => isActive ? "active" : ""}>
           <span className="nav-ico"><Icone nome="caixa" size={20} /></span>
           Caixa
+        </NavLink>
+        <NavLink to="/relatorios" className={({ isActive }) => isActive ? "active" : loc.pathname.startsWith("/relatorios/") ? "active" : ""}>
+          <span className="nav-ico"><Icone nome="grafico" size={20} /></span>
+          Relatórios
         </NavLink>
         <NavLink to="/cardapio" className={({ isActive }) => isActive ? "active" : ""}>
           <span className="nav-ico"><Icone nome="cardapio" size={20} /></span>

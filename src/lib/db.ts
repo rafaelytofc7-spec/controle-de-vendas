@@ -263,14 +263,17 @@ export async function importarDados(dados: DadosNormalizados, substituir = false
   await tx.objectStore("meta").put({ chave: "loja", valor: dados.loja });
   await tx.objectStore("meta").put({ chave: "importado_em", valor: agoraIso() });
   const flag = await tx.objectStore("meta").get("precisa_upload_inicial");
-  if (substituir || flag?.valor !== false) {
+  const precisaUpload = substituir || flag?.valor !== false;
+  if (precisaUpload) {
     await tx.objectStore("meta").put({ chave: "precisa_upload_inicial", valor: true });
+  } else {
+    const pStore = tx.objectStore("pendentes");
+    const agora = agoraIso();
+    for (const p of pendentes) {
+      await pStore.put({ colecao: p.colecao, id: p.id, acao: "upsert", em: agora });
+    }
   }
   await tx.done;
-
-  if (!substituir) {
-    for (const p of pendentes) await marcarPendente(p.colecao, p.id, "upsert");
-  }
   return resultado;
 }
 

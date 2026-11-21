@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
 import { chaveSemana, diasDoMes, formatarDataHora, formatarDia, hojeChave, zonedParts } from "../lib/datas";
@@ -6,6 +7,7 @@ import { RESUMO_VAZIO, resumoOuVazio } from "../lib/agregados";
 import { ListaVirtual } from "../components/ListaVirtual";
 import { GraficoVendas } from "../components/GraficoVendas";
 import { EstadoVazio } from "../components/EstadoVazio";
+import { Icone } from "../components/Icone";
 
 const DOW = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 
@@ -47,6 +49,14 @@ export function LivroCaixa() {
         <div className="box"><div className="lbl">Ticket médio</div><div className="v" data-testid="ticket-medio">{formatarReais(dia.ticketMedio)}</div><div className="muted small">do dia selecionado</div></div>
         <div className="box span"><div className="lbl">Total geral</div><div className="v" data-testid="total-geral">{formatarReais(total.total)}</div><div className="muted small" data-testid="qtd-geral">{total.quantidade.toLocaleString("pt-BR")} vendas · ticket médio {formatarReais(total.ticketMedio)}</div></div>
       </div>
+      <Link to="/relatorios" className="card link-card link-mais" data-testid="atalho-relatorios" style={{ margin: "12px 0" }}>
+        <span className="mais-ico"><Icone nome="grafico" size={22} /></span>
+        <div className="grow">
+          <h3>Relatórios mensais</h3>
+          <p className="muted">Total de cada mês, variação e o melhor dia</p>
+        </div>
+        <span className="mais-seta" aria-hidden="true">›</span>
+      </Link>
       <GraficoVendas porDia={agregados.porDia} />
       <div className="card">
         <div className="mes-nav">

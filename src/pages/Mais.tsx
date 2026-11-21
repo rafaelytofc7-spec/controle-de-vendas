@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { Icone } from "../components/Icone";
 
 const LINKS = [
+  { to: "/relatorios", t: "Relatórios", d: "Totais de cada mês, gráficos e comparação", icone: "grafico" },
   { to: "/encomendas", t: "Encomendas", d: "Pedidos reservados", icone: "encomenda" },
   { to: "/estoque", t: "Estoque", d: "Reabastecimento e preço sugerido", icone: "estoque" },
   { to: "/cobrancas", t: "Cobranças", d: "Registros manuais de teste", icone: "cobranca" },

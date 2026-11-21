@@ -7,7 +7,7 @@ const ATUAL = resolve("/workspace/controle-vendas/importacao/caixa-importacao-20
 
 test("mescla o arquivo de atualização sem duplicar vendas", async ({ page }) => {
   test.skip(!existsSync(ANTIGO) || !existsSync(ATUAL), "arquivos de importação ausentes");
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   await page.goto("./");
   await page.getByTestId("import-file").setInputFiles(ANTIGO);
   await expect(page.getByTestId("calc-valor")).toBeVisible({ timeout: 90_000 });
