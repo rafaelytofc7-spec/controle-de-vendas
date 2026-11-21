@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useDebounce } from "../lib/debounce";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
 import { precoSugerido as calcSug, custoUnitario } from "../lib/reabastecimento";
@@ -9,6 +10,7 @@ export function Estoque() {
   const { produtos, reabastecimentos, registrarReabastecimento, excluirReabastecimento, salvarProduto } = useStore();
   const { confirmar, dialogo } = useConfirmar();
   const [busca, setBusca] = useState("");
+  const buscaDeb = useDebounce(busca, 160);
   const [produtoId, setProdutoId] = useState("");
   const [qtd, setQtd] = useState("");
   const [total, setTotal] = useState("");
@@ -16,9 +18,9 @@ export function Estoque() {
   const [erro, setErro] = useState("");
 
   const lista = useMemo(() => {
-    const q = busca.trim().toLowerCase();
+    const q = buscaDeb.trim().toLowerCase();
     return q ? produtos.filter((p) => p.nome.toLowerCase().includes(q)) : produtos;
-  }, [produtos, busca]);
+  }, [produtos, buscaDeb]);
   const p = produtos.find((x) => x.id === produtoId);
   const quantidade = Number(qtd.replace(",", ".")) || 0;
   const valorTotal = Number(total.replace(",", ".")) || 0;

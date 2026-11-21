@@ -33,6 +33,7 @@ import type { Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, Firebas
 import { configValida, iniciarFirebase } from "./lib/firebase";
 import { estadoEquipeLocal, sincronizar, type EstadoEquipe, type ProgressoSync } from "./lib/sync";
 import { calcularReabastecimento } from "./lib/reabastecimento";
+import { agregarVendas, type AgregadosVendas } from "./lib/agregados";
 import { autoriaAtualizacao, autoriaNova, montarAtividade } from "./lib/autoria";
 
 interface Store {
@@ -77,6 +78,7 @@ interface Store {
   membros: MembroLoja[];
   atividades: Atividade[];
   equipe?: EstadoEquipe;
+  agregados: AgregadosVendas;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -382,19 +384,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (usuario && online && pronto && temDados) void tentarSync();
   }, [usuario, online, pronto, temDados]); // eslint-disable-line
 
+  const agregados = useMemo(() => agregarVendas(vendas), [vendas]);
+
   const value = useMemo<Store>(() => ({
     pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, excluirEncomenda,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
     atualizarConfig, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync,
-    ehDono, bloqueado, membros, atividades, equipe,
+    ehDono, bloqueado, membros, atividades, equipe, agregados,
   }), [pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, excluirEncomenda,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
     atualizarConfig, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync,
-    ehDono, bloqueado, membros, atividades, equipe]);
+    ehDono, bloqueado, membros, atividades, equipe, agregados]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

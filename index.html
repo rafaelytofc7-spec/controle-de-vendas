@@ -8,6 +8,16 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
     <title>Controle de Vendas</title>
+    <script>
+      try {
+        if (localStorage.getItem("tema-controle-vendas") === "escuro") {
+          document.documentElement.setAttribute("data-tema", "escuro");
+          var m = document.querySelector('meta[name="theme-color"]');
+          if (m) m.setAttribute("content", "#0F1A14");
+        }
+      } catch (e) {}
+    </script>
+
   </head>
   <body>
     <div id="root"></div>

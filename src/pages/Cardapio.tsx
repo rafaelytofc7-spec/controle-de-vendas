@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useDebounce } from "../lib/debounce";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
 import { precoAtual, promoAgendada, promoAtiva } from "../lib/preco";
@@ -11,6 +12,7 @@ export function Cardapio() {
   const { produtos, config, salvarProduto, excluirProduto } = useStore();
   const { confirmar, dialogo } = useConfirmar();
   const [busca, setBusca] = useState("");
+  const buscaDeb = useDebounce(busca, 160);
   const [edit, setEdit] = useState<string | "novo" | null>(null);
   const [nome, setNome] = useState("");
   const [preco, setPreco] = useState("");
@@ -20,9 +22,9 @@ export function Cardapio() {
   const [expira, setExpira] = useState("");
 
   const lista = useMemo(() => {
-    const q = busca.trim().toLowerCase();
+    const q = buscaDeb.trim().toLowerCase();
     return q ? produtos.filter((p) => p.nome.toLowerCase().includes(q)) : produtos;
-  }, [produtos, busca]);
+  }, [produtos, buscaDeb]);
 
   function abrir(id: string | "novo") {
     if (id === "novo") {

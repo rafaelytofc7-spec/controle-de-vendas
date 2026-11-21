@@ -1,29 +1,29 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
-import { chaveMes, chaveSemana, diasDoMes, formatarDia, hojeChave, zonedParts } from "../lib/datas";
-import { resumoDia, resumoMes, resumoSemana, resumoTotal, totaisPorDia } from "../lib/faturamento";
+import { chaveSemana, diasDoMes, formatarDataHora, formatarDia, hojeChave, zonedParts } from "../lib/datas";
+import { RESUMO_VAZIO, resumoOuVazio } from "../lib/agregados";
+import { ListaVirtual } from "../components/ListaVirtual";
 
 const DOW = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 
 export function LivroCaixa() {
-  const { vendas } = useStore();
+  const { agregados } = useStore();
   const hoje = hojeChave();
   const [sel, setSel] = useState(hoje);
   const parts = zonedParts(sel + "T12:00:00-03:00");
   const [ano, setAno] = useState(parts.year);
   const [mes, setMes] = useState(parts.month);
 
-  const totais = useMemo(() => totaisPorDia(vendas), [vendas]);
   const ym = `${ano}-${String(mes).padStart(2, "0")}`;
-  const dia = resumoDia(vendas, sel);
-  const semana = resumoSemana(vendas, chaveSemana(sel + "T12:00:00-03:00"));
-  const mesR = resumoMes(vendas, ym);
-  const total = resumoTotal(vendas);
+  const dia = resumoOuVazio(agregados.porDia, sel);
+  const semana = resumoOuVazio(agregados.porSemana, chaveSemana(sel + "T12:00:00-03:00"));
+  const mesR = resumoOuVazio(agregados.porMes, ym);
+  const total = agregados.total ?? RESUMO_VAZIO;
+  const listaDia = agregados.porDiaLista.get(sel) ?? [];
 
-  const dias = diasDoMes(ano, mes);
+  const dias = useMemo(() => diasDoMes(ano, mes), [ano, mes]);
   const primeiro = dias[0];
-  // Monday start: JS getUTCDay 0=Sun
   const pad = (primeiro.getUTCDay() + 6) % 7;
 
   function mover(delta: number) {
@@ -34,8 +34,12 @@ export function LivroCaixa() {
 
   return (
     <div>
-      <div className="kpi" data-testid="kpis-caixa">
-        <div className="box"><div className="lbl">Dia</div><div className="v">{formatarReais(dia.total)}</div><div className="muted small">{dia.quantidade} venda(s)</div></div>
+      <div className="kpi kpi-painel" data-testid="kpis-caixa">
+        <div className="box destaque">
+          <div className="lbl">Hoje</div>
+          <div className="v">{sel === hoje ? formatarReais(resumoOuVazio(agregados.porDia, hoje).total) : formatarReais(dia.total)}</div>
+          <div className="muted small">{sel === hoje ? `${resumoOuVazio(agregados.porDia, hoje).quantidade} venda(s) de hoje` : `Dia selecionado · ${dia.quantidade} venda(s)`}</div>
+        </div>
         <div className="box"><div className="lbl">Semana</div><div className="v">{formatarReais(semana.total)}</div><div className="muted small">{semana.quantidade} venda(s)</div></div>
         <div className="box"><div className="lbl">Mês</div><div className="v">{formatarReais(mesR.total)}</div><div className="muted small">{mesR.quantidade} venda(s)</div></div>
         <div className="box"><div className="lbl">Ticket médio</div><div className="v" data-testid="ticket-medio">{formatarReais(dia.ticketMedio)}</div><div className="muted small">do dia selecionado</div></div>
@@ -52,8 +56,8 @@ export function LivroCaixa() {
           {Array.from({ length: pad }, (_, i) => <div className="day empty" key={`e${i}`} />)}
           {dias.map((d) => {
             const chave = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-            const tot = totais.get(chave) ?? 0;
-            const cls = ["day", tot > 0 ? "has" : "", chave === sel ? "sel" : ""].filter(Boolean).join(" ");
+            const tot = agregados.porDia.get(chave)?.total ?? 0;
+            const cls = ["day", tot > 0 ? "has" : "", chave === sel ? "sel" : "", chave === hoje ? "hoje" : ""].filter(Boolean).join(" ");
             return (
               <button type="button" className={cls} key={chave} onClick={() => setSel(chave)}>
                 <span>{d.getUTCDate()}</span>
@@ -63,6 +67,24 @@ export function LivroCaixa() {
           })}
         </div>
         <p className="muted small" style={{ marginTop: 10 }}>Selecionado: {formatarDia(sel + "T12:00:00-03:00")}</p>
+      </div>
+      <div className="card">
+        <div className="row"><h3 className="grow">Vendas do dia</h3><strong>{formatarReais(dia.total)}</strong></div>
+        <ListaVirtual
+          itens={listaDia}
+          chave={(v) => v.id}
+          altura={360}
+          alturaLinha={76}
+          vazio={<p className="muted">Nenhuma venda neste dia.</p>}
+          render={(v) => (
+            <div className="item">
+              <div>
+                <div className="titulo">{formatarReais(v.valor)}</div>
+                <div className="muted small">{formatarDataHora(v.criado_em)}</div>
+              </div>
+            </div>
+          )}
+        />
       </div>
     </div>
   );

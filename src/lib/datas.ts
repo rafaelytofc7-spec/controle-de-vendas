@@ -4,47 +4,82 @@ export function agoraIso(): string {
   return new Date().toISOString();
 }
 
-export function zonedParts(iso: string, timeZone = TZ) {
+export interface ZonedParts {
+  year: number;
+  month: number;
+  day: number;
+  weekday: string;
+  chaveDia: string;
+}
+
+const formatters = new Map<string, Intl.DateTimeFormat>();
+const partsCache = new Map<string, ZonedParts>();
+
+function formatter(timeZone: string): Intl.DateTimeFormat {
+  let f = formatters.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    });
+    formatters.set(timeZone, f);
+  }
+  return f;
+}
+
+export function zonedParts(iso: string, timeZone = TZ): ZonedParts {
+  const key = iso + "\t" + timeZone;
+  const hit = partsCache.get(key);
+  if (hit) return hit;
   const d = new Date(iso);
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  });
   const map: Record<string, string> = {};
-  for (const p of fmt.formatToParts(d)) {
+  for (const p of formatter(timeZone).formatToParts(d)) {
     if (p.type !== "literal") map[p.type] = p.value;
   }
-  return {
+  const out: ZonedParts = {
     year: Number(map.year),
     month: Number(map.month),
     day: Number(map.day),
-    weekday: map.weekday, // Sun, Mon, ...
+    weekday: map.weekday,
     chaveDia: `${map.year}-${map.month}-${map.day}`,
   };
+  partsCache.set(key, out);
+  return out;
 }
+
+let hojeMemo = { em: 0, chave: "", tz: TZ };
 
 export function hojeChave(timeZone = TZ): string {
-  return zonedParts(new Date().toISOString(), timeZone).chaveDia;
+  const agora = Date.now();
+  if (hojeMemo.tz === timeZone && hojeMemo.chave && agora - hojeMemo.em < 1_000) {
+    return hojeMemo.chave;
+  }
+  const chave = zonedParts(new Date(agora).toISOString(), timeZone).chaveDia;
+  hojeMemo = { em: agora, chave, tz: timeZone };
+  return chave;
 }
 
-/** Monday-start week key (YYYY-Www style via the Monday date). */
-export function chaveSemana(iso: string, timeZone = TZ): string {
-  const p = zonedParts(iso, timeZone);
+export function chaveSemanaDeParts(p: ZonedParts): string {
   const utc = Date.UTC(p.year, p.month - 1, p.day);
   const wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
-  const offset = wd === 0 ? -6 : 1 - wd; // Monday start
+  const offset = wd === 0 ? -6 : 1 - wd;
   const monday = new Date(utc + offset * 86400000);
   const y = monday.getUTCFullYear();
   const m = String(monday.getUTCMonth() + 1).padStart(2, "0");
   const d = String(monday.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+/** Monday-start week key (YYYY-MM-DD of that week's Monday). */
+export function chaveSemana(iso: string, timeZone = TZ): string {
+  return chaveSemanaDeParts(zonedParts(iso, timeZone));
 }
 
 export function chaveMes(iso: string, timeZone = TZ): string {
@@ -56,23 +91,29 @@ export function mesmoDia(iso: string, chave: string, timeZone = TZ): boolean {
   return zonedParts(iso, timeZone).chaveDia === chave;
 }
 
+const fmtHora = new Map<string, Intl.DateTimeFormat>();
+const fmtDia = new Map<string, Intl.DateTimeFormat>();
+
 export function formatarDataHora(iso: string, timeZone = TZ): string {
-  return new Date(iso).toLocaleString("pt-BR", {
-    timeZone,
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  let f = fmtHora.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("pt-BR", {
+      timeZone, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+    });
+    fmtHora.set(timeZone, f);
+  }
+  return f.format(new Date(iso));
 }
 
 export function formatarDia(iso: string, timeZone = TZ): string {
-  return new Date(iso).toLocaleDateString("pt-BR", {
-    timeZone,
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  let f = fmtDia.get(timeZone);
+  if (!f) {
+    f = new Intl.DateTimeFormat("pt-BR", {
+      timeZone, day: "2-digit", month: "short", year: "numeric",
+    });
+    fmtDia.set(timeZone, f);
+  }
+  return f.format(new Date(iso));
 }
 
 export function diasDoMes(ano: number, mes1a12: number): Date[] {

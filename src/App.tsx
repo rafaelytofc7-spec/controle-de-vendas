@@ -13,6 +13,7 @@ import { Administracao } from "./pages/Administracao";
 import { Mais } from "./pages/Mais";
 import { APP_VERSION, buscarVersaoRemota, temAtualizacao } from "./lib/versao";
 import { useEffect, useState } from "react";
+import { alternarTema, aplicarTema, lerTema, type Tema } from "./lib/tema";
 
 function Icon({ d }: { d: string }) {
   return (
@@ -40,6 +41,9 @@ function Shell() {
   const loc = useLocation();
   const meta = TITULOS[loc.pathname] ?? { t: "Controle de Vendas", s: "" };
   const [atualizacao, setAtualizacao] = useState<string>();
+  const [tema, setTema] = useState<Tema>(() => lerTema());
+
+  useEffect(() => { aplicarTema(tema); }, [tema]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -68,7 +72,13 @@ function Shell() {
           <div className="sub">{config.nome_loja || meta.s}</div>
           <h1>{meta.t}</h1>
         </div>
-        <div className="small" style={{ textAlign: "right", opacity: 0.9 }}>
+        <button
+          type="button"
+          className="btn-tema"
+          aria-label={tema === "escuro" ? "Usar tema claro" : "Usar tema escuro"}
+          onClick={() => setTema(alternarTema())}
+        >{tema === "escuro" ? "Claro" : "Escuro"}</button>
+        <div className="small status-nuvem" style={{ textAlign: "right", opacity: 0.9 }}>
           {!online ? "Offline" : syncando ? "Sincronizando…" : usuario ? "Nuvem ligada" : "Local"}
           <div>v{APP_VERSION}</div>
         </div>

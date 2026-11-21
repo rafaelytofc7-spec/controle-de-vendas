@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ListaVirtual } from "../components/ListaVirtual";
 import { useStore } from "../store";
 import { bloquearMembro, convidarMembro, removerMembro } from "../lib/sync";
 import { formatarDataHora } from "../lib/datas";
@@ -146,16 +147,20 @@ export function Administracao() {
         <div className="card">
           <h3>Registro de atividades</h3>
           {atividades.length === 0 ? <p className="muted">Nenhuma atividade registrada ainda.</p> : (
-            <ul className="lista">
-              {atividades.map((a) => (
-                <li key={a.id} className="lista-item">
+            <ListaVirtual
+              itens={atividades}
+              chave={(a) => a.id}
+              altura={420}
+              alturaLinha={76}
+              render={(a) => (
+                <div className="lista-item">
                   <div className="grow">
                     <strong>{a.resumo}</strong>
                     <div className="muted small">{rotuloAutor(a.uid, a.email)} · {a.acao} · {a.colecao} · {formatarDataHora(a.em)}</div>
                   </div>
-                </li>
-              ))}
-            </ul>
+                </div>
+              )}
+            />
           )}
         </div>
       )}
