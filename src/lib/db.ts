@@ -1,0 +1,264 @@
+import { deleteDB, openDB, type IDBPDatabase } from "idb";
+import type {
+  Cobranca,
+  ConfiguracaoLoja,
+  Encomenda,
+  Entrega,
+  FirebaseWebConfig,
+  Produto,
+  Reabastecimento,
+  Venda,
+} from "./types";
+import type { DadosNormalizados } from "./importacao";
+import { agoraIso } from "./datas";
+
+const DB_NAME = "controle-de-vendas";
+const DB_VERSION = 1;
+
+export interface MetaSync {
+  chave: string;
+  valor: unknown;
+}
+
+export interface PendenteSync {
+  colecao: string;
+  id: string;
+  acao: "upsert" | "delete";
+  em: string;
+}
+
+type Schema = {
+  vendas: { key: string; value: Venda; indexes: { "por-criado": string } };
+  produtos: { key: string; value: Produto; indexes: { "por-ordem": number } };
+  entregas: { key: string; value: Entrega; indexes: { "por-criado": string } };
+  encomendas: { key: string; value: Encomenda; indexes: { "por-criado": string } };
+  cobrancas: { key: string; value: Cobranca; indexes: { "por-criado": string } };
+  reabastecimentos: { key: string; value: Reabastecimento; indexes: { "por-criado": string } };
+  configuracao: { key: string; value: ConfiguracaoLoja };
+  meta: { key: string; value: { chave: string; valor: unknown } };
+  pendentes: { key: string; value: PendenteSync };
+};
+
+let _db: IDBPDatabase<Schema> | null = null;
+
+export async function db(): Promise<IDBPDatabase<Schema>> {
+  if (_db) return _db;
+  _db = await openDB<Schema>(DB_NAME, DB_VERSION, {
+    upgrade(database) {
+      if (!database.objectStoreNames.contains("vendas")) {
+        const s = database.createObjectStore("vendas", { keyPath: "id" });
+        s.createIndex("por-criado", "criado_em");
+      }
+      if (!database.objectStoreNames.contains("produtos")) {
+        const s = database.createObjectStore("produtos", { keyPath: "id" });
+        s.createIndex("por-ordem", "ordem");
+      }
+      if (!database.objectStoreNames.contains("entregas")) {
+        const s = database.createObjectStore("entregas", { keyPath: "id" });
+        s.createIndex("por-criado", "criado_em");
+      }
+      if (!database.objectStoreNames.contains("encomendas")) {
+        const s = database.createObjectStore("encomendas", { keyPath: "id" });
+        s.createIndex("por-criado", "criado_em");
+      }
+      if (!database.objectStoreNames.contains("cobrancas")) {
+        const s = database.createObjectStore("cobrancas", { keyPath: "id" });
+        s.createIndex("por-criado", "criado_em");
+      }
+      if (!database.objectStoreNames.contains("reabastecimentos")) {
+        const s = database.createObjectStore("reabastecimentos", { keyPath: "id" });
+        s.createIndex("por-criado", "criado_em");
+      }
+      if (!database.objectStoreNames.contains("configuracao")) {
+        database.createObjectStore("configuracao", { keyPath: "loja" });
+      }
+      if (!database.objectStoreNames.contains("meta")) {
+        database.createObjectStore("meta", { keyPath: "chave" });
+      }
+      if (!database.objectStoreNames.contains("pendentes")) {
+        database.createObjectStore("pendentes", { keyPath: "id" });
+      }
+    },
+  });
+  return _db;
+}
+
+export async function resetarBanco(): Promise<void> {
+  if (_db) {
+    _db.close();
+    _db = null;
+  }
+  await deleteDB(DB_NAME);
+}
+
+async function marcarPendente(colecao: string, id: string, acao: "upsert" | "delete") {
+  const d = await db();
+  await d.put("pendentes", { colecao, id, acao, em: agoraIso() });
+}
+
+export async function listarVendas(): Promise<Venda[]> {
+  const d = await db();
+  const all = await d.getAll("vendas");
+  return all.filter((v) => !v.excluido).sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+}
+
+export async function listarProdutos(): Promise<Produto[]> {
+  const d = await db();
+  const all = await d.getAll("produtos");
+  return all.filter((p) => !p.excluido).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, "pt-BR"));
+}
+
+export async function listarEntregas(): Promise<Entrega[]> {
+  const d = await db();
+  return (await d.getAll("entregas")).filter((e) => !e.excluido).sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+}
+
+export async function listarEncomendas(): Promise<Encomenda[]> {
+  const d = await db();
+  return (await d.getAll("encomendas")).filter((e) => !e.excluido).sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+}
+
+export async function listarCobrancas(limite = 20): Promise<Cobranca[]> {
+  const d = await db();
+  return (await d.getAll("cobrancas"))
+    .filter((c) => !c.excluido)
+    .sort((a, b) => b.criado_em.localeCompare(a.criado_em))
+    .slice(0, limite);
+}
+
+export async function listarReabastecimentos(): Promise<Reabastecimento[]> {
+  const d = await db();
+  return (await d.getAll("reabastecimentos"))
+    .filter((r) => !r.excluido)
+    .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+}
+
+export async function obterConfig(): Promise<ConfiguracaoLoja | undefined> {
+  const d = await db();
+  const all = await d.getAll("configuracao");
+  return all[0];
+}
+
+export async function salvarConfig(cfg: ConfiguracaoLoja, sync = true): Promise<void> {
+  const d = await db();
+  const row = { ...cfg, atualizado_em: agoraIso() };
+  await d.put("configuracao", row);
+  if (sync) await marcarPendente("configuracao", row.loja, "upsert");
+}
+
+export async function upsertVenda(v: Venda, sync = true): Promise<void> {
+  const d = await db();
+  await d.put("vendas", { ...v, atualizado_em: v.atualizado_em || agoraIso() });
+  if (sync) await marcarPendente("vendas", v.id, v.excluido ? "delete" : "upsert");
+}
+
+export async function upsertProduto(p: Produto, sync = true): Promise<void> {
+  const d = await db();
+  await d.put("produtos", { ...p, atualizado_em: p.atualizado_em || agoraIso() });
+  if (sync) await marcarPendente("produtos", p.id, p.excluido ? "delete" : "upsert");
+}
+
+export async function upsertEntrega(e: Entrega, sync = true): Promise<void> {
+  const d = await db();
+  await d.put("entregas", { ...e, atualizado_em: e.atualizado_em || agoraIso() });
+  if (sync) await marcarPendente("entregas", e.id, e.excluido ? "delete" : "upsert");
+}
+
+export async function upsertEncomenda(e: Encomenda, sync = true): Promise<void> {
+  const d = await db();
+  await d.put("encomendas", { ...e, atualizado_em: e.atualizado_em || agoraIso() });
+  if (sync) await marcarPendente("encomendas", e.id, e.excluido ? "delete" : "upsert");
+}
+
+export async function upsertCobranca(c: Cobranca, sync = true): Promise<void> {
+  const d = await db();
+  await d.put("cobrancas", { ...c, atualizado_em: c.atualizado_em || agoraIso() });
+  if (sync) await marcarPendente("cobrancas", c.id, c.excluido ? "delete" : "upsert");
+}
+
+export async function upsertReabastecimento(r: Reabastecimento, sync = true): Promise<void> {
+  const d = await db();
+  await d.put("reabastecimentos", { ...r, atualizado_em: r.atualizado_em || agoraIso() });
+  if (sync) await marcarPendente("reabastecimentos", r.id, r.excluido ? "delete" : "upsert");
+}
+
+export async function importarDados(dados: DadosNormalizados, substituir = true): Promise<void> {
+  if (substituir) {
+    await resetarBanco();
+  }
+  const d = await db();
+  const tx = d.transaction(
+    ["vendas", "produtos", "entregas", "encomendas", "cobrancas", "reabastecimentos", "configuracao", "meta", "pendentes"],
+    "readwrite",
+  );
+  for (const v of dados.vendas) await tx.objectStore("vendas").put(v);
+  for (const p of dados.produtos) await tx.objectStore("produtos").put(p);
+  for (const e of dados.entregas) await tx.objectStore("entregas").put(e);
+  for (const e of dados.encomendas) await tx.objectStore("encomendas").put(e);
+  for (const c of dados.cobrancas) await tx.objectStore("cobrancas").put(c);
+  for (const r of dados.reabastecimentos) await tx.objectStore("reabastecimentos").put(r);
+  await tx.objectStore("configuracao").put(dados.configuracao);
+  await tx.objectStore("meta").put({ chave: "loja", valor: dados.loja });
+  await tx.objectStore("meta").put({ chave: "importado_em", valor: agoraIso() });
+  await tx.objectStore("meta").put({ chave: "precisa_upload_inicial", valor: true });
+  await tx.done;
+}
+
+export async function exportarDados(): Promise<DadosNormalizados> {
+  const loja = ((await getMeta("loja")) as string) || (await obterConfig())?.loja || "loja";
+  return {
+    loja,
+    configuracao: (await obterConfig()) ?? {
+      loja,
+      nome_loja: "Minha loja",
+      telefone: "",
+      mensagem_cardapio: "",
+      taxa_entrega: 0,
+      observacoes: "",
+      atualizado_em: agoraIso(),
+    },
+    vendas: await listarVendas(),
+    produtos: await listarProdutos(),
+    entregas: await listarEntregas(),
+    encomendas: await listarEncomendas(),
+    cobrancas: await listarCobrancas(10_000),
+    reabastecimentos: await listarReabastecimentos(),
+  };
+}
+
+export async function getMeta<T = unknown>(chave: string): Promise<T | undefined> {
+  const d = await db();
+  const row = await d.get("meta", chave);
+  return row?.valor as T | undefined;
+}
+
+export async function setMeta(chave: string, valor: unknown): Promise<void> {
+  const d = await db();
+  await d.put("meta", { chave, valor });
+}
+
+export async function getFirebaseConfig(): Promise<FirebaseWebConfig | undefined> {
+  return getMeta<FirebaseWebConfig>("firebase_config");
+}
+
+export async function setFirebaseConfig(cfg: FirebaseWebConfig): Promise<void> {
+  await setMeta("firebase_config", cfg);
+}
+
+export async function listarPendentes(): Promise<PendenteSync[]> {
+  const d = await db();
+  return d.getAll("pendentes");
+}
+
+export async function limparPendente(id: string): Promise<void> {
+  const d = await db();
+  await d.delete("pendentes", id);
+}
+
+export async function bancoTemDados(): Promise<boolean> {
+  const d = await db();
+  const n = await d.count("vendas");
+  const p = await d.count("produtos");
+  const c = await d.count("configuracao");
+  return n + p + c > 0;
+}

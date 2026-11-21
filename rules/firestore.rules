@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function authed() {
+      return request.auth != null;
+    }
+
+    function emailAtual() {
+      return authed() && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    function ehMembro(lojaId) {
+      return authed() && (
+        exists(/databases/$(database)/documents/lojas/$(lojaId)/membros/$(request.auth.uid))
+        || (
+          exists(/databases/$(database)/documents/lojas/$(lojaId))
+          && (
+            get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid
+            || (
+              get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails is list
+              && emailAtual() in get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails
+            )
+          )
+        )
+      );
+    }
+
+    function ehDono(lojaId) {
+      return authed() && exists(/databases/$(database)/documents/lojas/$(lojaId))
+        && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid;
+    }
+
+    match /lojas/{lojaId} {
+      allow create: if authed() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if ehMembro(lojaId);
+      allow update: if ehDono(lojaId);
+      allow delete: if false;
+
+      match /membros/{uid} {
+        allow read: if ehMembro(lojaId) || (authed() && request.auth.uid == uid);
+        allow create: if authed() && request.auth.uid == uid && (
+          ehDono(lojaId)
+          || (
+            exists(/databases/$(database)/documents/lojas/$(lojaId))
+            && get(/databases/$(database)/documents/lojas/$(lojaId)).data.ownerUid == request.auth.uid
+          )
+          || (
+            exists(/databases/$(database)/documents/lojas/$(lojaId))
+            && get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails is list
+            && emailAtual() in get(/databases/$(database)/documents/lojas/$(lojaId)).data.membrosEmails
+          )
+        );
+        allow update, delete: if ehDono(lojaId);
+      }
+
+      match /{colecao}/{docId} {
+        allow read, write: if ehMembro(lojaId);
+      }
+    }
+  }
+}
