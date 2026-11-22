@@ -2,6 +2,7 @@ import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import type { FirebaseWebConfig } from "./types";
+import { FIREBASE_CONFIG_PADRAO } from "./firebasePadrao";
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
@@ -11,6 +12,11 @@ let lastKey = "";
 export function configValida(cfg: FirebaseWebConfig | undefined | null): cfg is FirebaseWebConfig {
   if (!cfg) return false;
   return Boolean(cfg.apiKey && cfg.authDomain && cfg.projectId && cfg.appId);
+}
+
+/** Saved override if valid, otherwise the official project shipped with the app. */
+export function configEfetiva(salva?: FirebaseWebConfig | null): FirebaseWebConfig {
+  return configValida(salva) ? salva : FIREBASE_CONFIG_PADRAO;
 }
 
 export function iniciarFirebase(cfg: FirebaseWebConfig): { app: FirebaseApp; auth: Auth; db: Firestore } {

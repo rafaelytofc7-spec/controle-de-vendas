@@ -9,7 +9,7 @@ Aplicativo de caixa, cardápio, entregas e livro de vendas. Funciona no celular 
 - Cardápio com promoções agendadas e compartilhamento pelo WhatsApp.
 - Entregas com situação (pendente, a caminho, entregue) e WhatsApp.
 - Encomendas, reabastecimento (custo e preço sugerido) e cobranças **manuais de teste**.
-- Dados no aparelho (IndexedDB). Quando houver internet e o Firebase estiver configurado, a sincronização é nos dois sentidos com o Cloud Firestore.
+- Dados no aparelho (IndexedDB). Quando houver internet e você estiver autenticado, a sincronização é nos dois sentidos com o Cloud Firestore.
 - Backup por arquivo JSON e, se você configurar o Google, o botão “Salvar no Google Drive”.
 
 Este aplicativo **não** envia cobranças reais para Stone ou PicPay e **não** guarda tokens de maquininha.
@@ -31,11 +31,11 @@ O endereço local usa o caminho `/controle-de-vendas/`.
 
 O histórico de vendas **não** entra neste repositório (são dados da loja). No primeiro uso, importe o arquivo JSON de backup que você recebeu em separado (repositório privado de dados, ou o arquivo enviado para o seu computador). Você também pode começar do zero.
 
-## Ligar o Firebase
+## Ligar a nuvem
 
-O passo a passo está no aplicativo, em **Mais → Ajustes → Guia**, e também no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Em resumo: você cria o projeto, ativa Firestore e Authentication, cola a configuração web no app e publica as regras de `rules/firestore.rules`. Só quem entra com uma conta autorizada da loja consegue ler ou gravar na nuvem.
+A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Abra **Mais → Ajustes → Nuvem**, crie uma conta com e-mail e senha e entre. A primeira conta vira a dona da loja. As outras pessoas são adicionadas por e-mail no painel **Mais → Administração**. Elas usam o aplicativo normalmente. Só a dona gerencia a equipe, vê o registro de atividades, o faturamento por pessoa e altera as configurações da loja. Não há cargos.
 
-A primeira conta que entrar vira a dona da loja. As outras pessoas são adicionadas por e-mail no painel **Mais → Administração**. Elas usam o aplicativo normalmente. Só a dona gerencia a equipe, vê o registro de atividades, o faturamento por pessoa e altera as configurações da loja. Não há cargos.
+O detalhe está no aplicativo, em **Mais → Ajustes → Guia**, e no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Se quiser outro projeto Firebase, a tela Nuvem ainda aceita colar uma configuração alternativa.
 
 ## Aplicativo Android
 

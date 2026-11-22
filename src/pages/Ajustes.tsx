@@ -16,7 +16,7 @@ import { APP_VERSION, APK_RELEASE_URL, buscarVersaoRemota, temAtualizacao } from
 
 export function Ajustes() {
   const store = useStore();
-  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync, importarArquivo, ehDono } = store;
+  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, importarArquivo, ehDono } = store;
   const [tab, setTab] = useState<"loja" | "backup" | "nuvem" | "guia">("loja");
   const [nome, setNome] = useState(config.nome_loja);
   const [tel, setTel] = useState(config.telefone);
@@ -32,6 +32,10 @@ export function Ajustes() {
   const [substituirTudo, setSubstituirTudo] = useState(false);
   const [versaoRemota, setVersaoRemota] = useState<string>();
   const nativo = ehNativo();
+
+  useEffect(() => {
+    setCfgTxt(firebaseOverride && firebaseCfg ? JSON.stringify(firebaseCfg, null, 2) : "");
+  }, [firebaseOverride, firebaseCfg]);
   const podeEditarLoja = ehDono || !usuario;
 
   useEffect(() => {
@@ -79,14 +83,14 @@ export function Ajustes() {
       const parsed = JSON.parse(cfgTxt) as FirebaseWebConfig;
       if (!configValida(parsed)) throw new Error("Faltam apiKey, authDomain, projectId ou appId.");
       await salvarFirebase(parsed);
-      setAviso("Configuração do Firebase salva neste aparelho.");
+      setAviso("Configuração alternativa salva neste aparelho. Ela substitui a nuvem padrão.");
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "JSON inválido.");
     }
   }
 
   async function loginEmail(criar: boolean) {
-    if (!firebaseCfg || !configValida(firebaseCfg)) { setAviso("Cole a configuração do Firebase antes."); return; }
+    if (!firebaseCfg || !configValida(firebaseCfg)) { setAviso("A configuração da nuvem não está disponível."); return; }
     setBusy(true);
     try {
       const { auth } = iniciarFirebase(firebaseCfg);
@@ -99,7 +103,7 @@ export function Ajustes() {
   }
 
   async function loginGoogle() {
-    if (!firebaseCfg || !configValida(firebaseCfg)) { setAviso("Cole a configuração do Firebase antes."); return; }
+    if (!firebaseCfg || !configValida(firebaseCfg)) { setAviso("A configuração da nuvem não está disponível."); return; }
     setBusy(true);
     try {
       const { auth } = iniciarFirebase(firebaseCfg);
@@ -184,10 +188,14 @@ export function Ajustes() {
       {tab === "nuvem" && (
         <div className="card col">
           <h3>Firebase</h3>
-          <p className="muted">Cole o objeto de configuração web do Firebase. Ele fica só neste aparelho. A primeira conta que entrar vira a dona da loja. As demais pessoas entram com e-mail e senha depois de serem convidadas.</p>
-          {nativo && <p className="muted small">No aplicativo Android, use e-mail e senha. O login com o Google em geral não abre a janela de conta neste WebView. No Firebase, inclua <strong>localhost</strong> em Domínios autorizados.</p>}
-          <textarea className="input mono" value={cfgTxt} onChange={(e) => setCfgTxt(e.target.value)} placeholder='{ "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "...", "googleClientId": "....apps.googleusercontent.com" }' />
-          <button className="btn btn-primary" onClick={() => void salvarCfgFb()}>Salvar configuração</button>
+          <p className="muted">A nuvem já vem configurada. Crie uma conta com e-mail e senha e entre. A primeira conta que entrar vira a dona da loja. As demais pessoas entram com o próprio e-mail e senha depois de serem convidadas em Administração.</p>
+          {nativo && <p className="muted small">No aplicativo Android, use e-mail e senha. O login com o Google em geral não abre a janela de conta neste WebView.</p>}
+          <p className="muted small">Só cole um JSON abaixo se quiser usar outro projeto Firebase. A configuração alternativa fica só neste aparelho.</p>
+          <textarea className="input mono" value={cfgTxt} onChange={(e) => setCfgTxt(e.target.value)} placeholder='Substituição opcional: { "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }' />
+          <div className="row wrap">
+            <button className="btn" onClick={() => void salvarCfgFb()}>Salvar substituição</button>
+            {firebaseOverride && <button className="btn" onClick={() => void limparFirebase().then(() => setAviso("Voltou à nuvem padrão do aplicativo."))}>Usar nuvem padrão</button>}
+          </div>
           {configValida(firebaseCfg) && (
             <>
               <p className="muted small">Projeto: {firebaseCfg?.projectId} · {online ? "online" : "offline"} · {usuario ? `logado como ${usuario.email}` : "não logado"}</p>

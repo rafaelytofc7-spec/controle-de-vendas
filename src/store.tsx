@@ -5,6 +5,7 @@ import {
   bancoTemDados,
   exportarDados,
   getFirebaseConfig,
+  limparFirebaseConfig,
   getMeta,
   importarDados,
   listarAtividades,
@@ -30,7 +31,7 @@ import {
 import { agoraIso } from "./lib/datas";
 import { gerarId, montarBackup, normalizarBackup, parseBackup, verificarBackupOficial, type DadosNormalizados } from "./lib/importacao";
 import type { Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FirebaseWebConfig, FormaCobranca, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
-import { configValida, iniciarFirebase } from "./lib/firebase";
+import { configEfetiva, configValida, iniciarFirebase } from "./lib/firebase";
 import { estadoEquipeLocal, sincronizar, type EstadoEquipe, type ProgressoSync } from "./lib/sync";
 import { calcularReabastecimento } from "./lib/reabastecimento";
 import { agregarVendas, type AgregadosVendas } from "./lib/agregados";
@@ -67,6 +68,8 @@ interface Store {
   atualizarConfig: (c: Partial<ConfiguracaoLoja>) => Promise<void>;
   firebaseCfg?: FirebaseWebConfig;
   salvarFirebase: (c: FirebaseWebConfig) => Promise<void>;
+  limparFirebase: () => Promise<void>;
+  firebaseOverride: boolean;
   usuario: User | null;
   online: boolean;
   syncando: boolean;
@@ -105,6 +108,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [cobrancas, setCobrancas] = useState<Cobranca[]>([]);
   const [reabastecimentos, setReabastecimentos] = useState<Reabastecimento[]>([]);
   const [firebaseCfg, setFirebaseCfg] = useState<FirebaseWebConfig>();
+  const [firebaseOverride, setFirebaseOverride] = useState(false);
   const [usuario, setUsuario] = useState<User | null>(null);
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [syncando, setSyncando] = useState(false);
@@ -119,11 +123,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const recarregar = useCallback(async () => {
     const tem = await bancoTemDados();
     setTemDados(tem);
-    const cfgFb = await getFirebaseConfig();
+    const salva = await getFirebaseConfig();
+    const cfgFb = configEfetiva(salva);
+    setFirebaseOverride(configValida(salva));
     setFirebaseCfg(cfgFb);
-    if (cfgFb && configValida(cfgFb)) {
-      try { iniciarFirebase(cfgFb); } catch { /* ignore */ }
-    }
+    try { iniciarFirebase(cfgFb); } catch { /* ignore */ }
     if (!tem) {
       setPronto(true);
       return;
@@ -360,8 +364,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const salvarFirebase = useCallback(async (c: FirebaseWebConfig) => {
     await setFirebaseConfig(c);
+    setFirebaseOverride(true);
     setFirebaseCfg(c);
     if (configValida(c)) iniciarFirebase(c);
+  }, []);
+
+  const limparFirebase = useCallback(async () => {
+    await limparFirebaseConfig();
+    const cfg = configEfetiva(undefined);
+    setFirebaseOverride(false);
+    setFirebaseCfg(cfg);
+    try { iniciarFirebase(cfg); } catch { /* ignore */ }
   }, []);
 
   const tentarSync = useCallback(async () => {
@@ -391,13 +404,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, excluirEncomenda,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync,
     ehDono, bloqueado, membros, atividades, equipe, agregados,
   }), [pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, excluirEncomenda,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, usuario, online, syncando, progressoSync, erroSync, tentarSync,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync,
     ehDono, bloqueado, membros, atividades, equipe, agregados]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
