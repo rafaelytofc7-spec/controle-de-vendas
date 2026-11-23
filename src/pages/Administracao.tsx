@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ListaVirtual } from "../components/ListaVirtual";
 import { useStore } from "../store";
 import { bloquearMembro, removerMembro } from "../lib/sync";
-import { alterarNomeMembro, alterarPin, transferirLideranca } from "../lib/acesso";
+import { alterarNomeMembro, renovarCodigoRecuperacao, transferirLideranca } from "../lib/acesso";
 import { LOJA_NUVEM_ID } from "../lib/firebasePadrao";
 import { formatarDataHora } from "../lib/datas";
 import { formatarReais } from "../lib/dinheiro";
@@ -29,8 +29,6 @@ export function Administracao() {
   const [taxa, setTaxa] = useState(String(config.taxa_entrega).replace(".", ","));
   const [obs, setObs] = useState(config.observacoes);
   const [codigo, setCodigo] = useState(loja);
-  const [pinNovo, setPinNovo] = useState("");
-  const [pinConfirma, setPinConfirma] = useState("");
   const [novoCodigo, setNovoCodigo] = useState<string>();
   const [alvoLider, setAlvoLider] = useState("");
   const [nomeEdit, setNomeEdit] = useState<Record<string, string>>({});
@@ -57,7 +55,7 @@ export function Administracao() {
     return (
       <div className="card">
         <h3>Administração</h3>
-        <p className="muted">Só o Admin da loja vê este painel. Entre com o PIN no aparelho do Admin e sincronize.</p>
+        <p className="muted">Só o Admin da loja vê este painel. Entre com o seu nome no aparelho do Admin e sincronize.</p>
       </div>
     );
   }
@@ -104,17 +102,15 @@ export function Administracao() {
     setAviso("Configurações da loja salvas. Sincronize para enviar à nuvem.");
   }
 
-  async function trocarPin() {
-    if (pinNovo !== pinConfirma) { setAviso("Os dois campos do novo PIN precisam ser iguais."); return; }
+  async function gerarNovoCodigo() {
     setBusy(true); setAviso("");
     try {
-      const codigoNovo = await alterarPin(pinNovo, codigoRecuperacao);
-      setPinNovo(""); setPinConfirma("");
+      const codigoNovo = await renovarCodigoRecuperacao();
       setNovoCodigo(codigoNovo);
-      setAviso(`PIN atualizado. O código de recuperação também mudou: ${codigoNovo}. Anote-o fora do telefone.`);
+      setAviso(`Novo código de recuperação: ${codigoNovo}. Anote-o fora do telefone.`);
       await recarregar();
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "Não foi possível alterar o PIN.");
+      setAviso(e instanceof Error ? e.message : "Não foi possível gerar um código novo.");
     } finally { setBusy(false); }
   }
 
@@ -146,12 +142,12 @@ export function Administracao() {
         <button className={aba === "loja" ? "on" : ""} onClick={() => setAba("loja")}>Loja</button>
       </div>
       {aviso && <div className="banner">{aviso}</div>}
-      {!online && <p className="muted small">Conecte-se à internet para gerenciar a equipe, o PIN ou o papel de Admin.</p>}
+      {!online && <p className="muted small">Conecte-se à internet para gerenciar a equipe ou o papel de Admin.</p>}
 
       {aba === "equipe" && (
         <div className="card">
           <h3>Pessoas da loja</h3>
-          <p className="muted small">Quem entra com o PIN da loja aparece aqui, com o nome que escolheu. Você pode bloquear ou remover um aparelho. Não dá para convidar por e-mail: o acesso é o PIN compartilhado.</p>
+          <p className="muted small">Quem entra com o próprio nome aparece aqui. Você pode bloquear ou remover um aparelho. Não é preciso convite: a outra pessoa abre o aplicativo, escreve o nome e entra na mesma loja.</p>
           <ul className="lista">
             {membros.map((m) => (
               <li key={m.uid} className="lista-item">
@@ -183,23 +179,17 @@ export function Administracao() {
 
       {aba === "acesso" && (
         <div className="card col">
-          <h3>PIN e recuperação</h3>
-          <p className="muted small">O PIN não fica gravado no aplicativo publicado. Só o Admin altera. Ao trocar o PIN, um código de recuperação novo é gerado.</p>
+          <h3>Código de recuperação</h3>
+          <p className="muted small">Só o Admin vê e renova este código. Ele recupera o papel de Admin se este aparelho for perdido. Não é preciso PIN: a equipe entra só com o nome.</p>
           {codigoMostrado ? (
             <p>Código de recuperação: <strong className="mono">{codigoMostrado}</strong></p>
           ) : (
-            <p className="muted">Nenhum código de recuperação neste aparelho. Se você ainda é o Admin original, o código foi mostrado na primeira entrada. Se perdeu, altere o PIN para gerar um novo.</p>
+            <p className="muted">Nenhum código de recuperação neste aparelho. Se você ainda é o Admin original, o código foi mostrado na primeira entrada. Se perdeu, gere um novo abaixo.</p>
           )}
-          <label className="field">Novo PIN
-            <input className="input" type="password" inputMode="numeric" autoComplete="new-password" value={pinNovo} onChange={(e) => setPinNovo(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="4 a 8 números" />
-          </label>
-          <label className="field">Confirme o novo PIN
-            <input className="input" type="password" inputMode="numeric" autoComplete="new-password" value={pinConfirma} onChange={(e) => setPinConfirma(e.target.value.replace(/\D/g, "").slice(0, 8))} />
-          </label>
-          <button className="btn btn-primary" disabled={busy || !online || !pinNovo} onClick={() => void trocarPin()}>Alterar PIN</button>
+          <button className="btn btn-primary" disabled={busy || !online} onClick={() => void gerarNovoCodigo()}>Gerar novo código</button>
 
           <h3 style={{ marginTop: 24 }}>Passar o papel de Admin</h3>
-          <p className="muted small">Escolha outra pessoa já na equipe. Depois da transferência, só ela gerencia membros e o PIN.</p>
+          <p className="muted small">Escolha outra pessoa já na equipe. Depois da transferência, só ela gerencia membros e o código de recuperação.</p>
           <label className="field">Novo Admin
             <select className="input" value={alvoLider} onChange={(e) => setAlvoLider(e.target.value)}>
               <option value="">Selecione</option>
@@ -288,7 +278,7 @@ export function Administracao() {
           <h3>Configurações da loja</h3>
           <label className="field">Nome da loja<input className="input" value={nome} onChange={(e) => setNome(e.target.value)} /></label>
           <label className="field">Código da loja<input className="input" value={codigo} onChange={(e) => setCodigo(e.target.value)} /></label>
-          <p className="muted small">O código acima é só local. Na nuvem, todos os aparelhos que entram com o PIN compartilham o mesmo banco.</p>
+          <p className="muted small">O código acima é só local. Na nuvem, todos os aparelhos que entram com o próprio nome compartilham o mesmo banco.</p>
           <label className="field">Telefone<input className="input" value={tel} onChange={(e) => setTel(e.target.value)} /></label>
           <label className="field">Mensagem do cardápio<textarea className="input" value={msg} onChange={(e) => setMsg(e.target.value)} /></label>
           <label className="field">Taxa de entrega<input className="input" value={taxa} onChange={(e) => setTaxa(e.target.value)} inputMode="decimal" /></label>

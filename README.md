@@ -38,20 +38,20 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 ## Ligar a nuvem
 
-A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Na primeira abertura o aplicativo pede o nome e o PIN (é preciso ter internet nesta primeira vez). O primeiro aparelho vira o Admin; os outros entram com o mesmo PIN e um nome. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o PIN, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail.
+A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Na primeira abertura o aplicativo pede só o nome (é preciso ter internet nesta primeira vez). O primeiro aparelho de uma loja nova vira o Admin; os outros entram com o próprio nome. O Admin atual da loja já existente é preservado. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o código de recuperação, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail nem PIN compartilhado.
 
-As regras do PIN e o acesso anônimo precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.7.2 traz uma alteração mínima nas regras (o aparelho pode ler o próprio documento em membros, para detectar se ainda faz parte da loja). Essa alteração precisa ser publicada no Console do Firebase; até lá o aplicativo já trata o erro de permissão e pede o PIN de novo.
+O acesso anônimo e as regras desta versão precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.8.0 deixa qualquer usuário autenticado criar o próprio documento em membros e entrar só com o nome; o liderUid, o bloqueio e a importação de legados continuam só com o Admin. **Publique o arquivo `rules/firestore.rules` no Console** (esta publicação não é feita pelo aplicativo). Sem isso, a 1.8.0 não inclui um usuário novo. A 1.7.2 continua funcionando com essas regras (ainda entra com PIN, e o ingresso antigo segue válido).
 
 O detalhe está no aplicativo, em **Mais → Ajustes → Guia**, e no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Se quiser outro projeto Firebase, a tela Nuvem ainda aceita colar uma configuração alternativa.
 
 ## Aplicativo Android
 
-O APK de cada versão fica em [Releases](https://github.com/rafaelytofc7-spec/controle-de-vendas/releases). No Firebase, inclua `localhost` nos domínios autorizados e ligue o acesso anônimo. No Android, entre com o nome e o PIN. Importe o backup pelo seletor de arquivos do aparelho; o histórico da loja **não** vem embutido no APK.
+O APK de cada versão fica em [Releases](https://github.com/rafaelytofc7-spec/controle-de-vendas/releases). No Firebase, inclua `localhost` nos domínios autorizados e ligue o acesso anônimo. No Android, entre com o nome. Importe o backup pelo seletor de arquivos do aparelho; o histórico da loja **não** vem embutido no APK.
 
 ## Testes
 
 ```bash
-npm test          # matemática, promoções, importação, PIN
+npm test          # matemática, promoções, importação, nomes
 npm run test:rules  # regras do Firestore (emulador)
 npm run build
 npm run test:e2e  # precisa do backup privado no caminho local de desenvolvimento
@@ -61,7 +61,7 @@ npm run test:e2e  # precisa do backup privado no caminho local de desenvolviment
 
 As capturas usam um nome de loja genérico.
 
-![Tela de entrada com nome e PIN](docs/00-entrada.png)
+![Tela de entrada com o nome](docs/00-entrada.png)
 
 ![Início, com o total do dia e atalho de encomenda](docs/01-inicio.png)
 

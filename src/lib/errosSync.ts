@@ -31,7 +31,7 @@ export function mensagemErroSync(e: unknown, operacao?: string): string {
   const raw = e instanceof Error ? e.message : String(e);
   if (isPermissionDenied(e)) {
     const alvo = operacao ? ` ${operacao}` : " a alteração";
-    return `A nuvem recusou${alvo} (sem permissão). Confira se este aparelho entrou com o PIN da loja e não está bloqueado.`;
+    return `A nuvem recusou${alvo} (sem permissão). Confira se este aparelho entrou com o nome na loja e não está bloqueado.`;
   }
   const s = raw.toLowerCase();
   if (s.includes("unavailable") || s.includes("failed to fetch") || s.includes("network") || s.includes("offline")) {

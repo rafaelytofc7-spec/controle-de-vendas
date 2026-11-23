@@ -119,7 +119,7 @@ export async function garantirMembro(loja: string, user: User): Promise<EstadoEq
     throw e;
   }
   if (!snap.exists()) {
-    throw new NaoEMembroError("A loja ainda não existe na nuvem. Entre com o seu nome e o PIN na tela de entrada.");
+    throw new NaoEMembroError("A loja ainda não existe na nuvem. Entre com o seu nome na tela de entrada.");
   }
   const liderUid = (snap.data() as { liderUid?: string }).liderUid ?? "";
   const membroRef = doc(db, "lojas", loja, "membros", user.uid);

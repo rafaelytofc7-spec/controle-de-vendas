@@ -1,9 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 
-const PIN = "2468";
-
-test("a porta pede nome e PIN e a venda aparece no outro aparelho", async ({ browser }) => {
+test("a porta pede só o nome e a venda aparece no outro aparelho", async ({ browser }) => {
   test.setTimeout(180_000);
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
@@ -13,12 +11,11 @@ test("a porta pede nome e PIN e a venda aparece no outro aparelho", async ({ bro
   await a.goto("./");
   await expect(a.getByTestId("porta-entrada")).toBeVisible();
   await expect(a.getByTestId("porta-nome")).toBeVisible();
-  await expect(a.getByTestId("porta-pin")).toBeVisible();
+  await expect(a.getByTestId("porta-pin")).toHaveCount(0);
   await a.getByTestId("porta-entrar").click();
   await expect(a.getByTestId("porta-erro")).toContainText("nome");
 
   await a.getByTestId("porta-nome").fill("Rafael");
-  await a.getByTestId("porta-pin").fill(PIN);
   await a.getByTestId("porta-entrar").click();
   await expect(a.getByTestId("import-file").or(a.getByTestId("calc-valor"))).toBeVisible({ timeout: 60_000 });
   if (await a.getByRole("button", { name: "Começar do zero" }).isVisible()) {
@@ -36,7 +33,7 @@ test("a porta pede nome e PIN e a venda aparece no outro aparelho", async ({ bro
   await b.goto("./");
   await expect(b.getByTestId("porta-entrada")).toBeVisible();
   await b.getByTestId("porta-nome").fill("Ana");
-  await b.getByTestId("porta-pin").fill(PIN);
+  await expect(b.getByTestId("porta-pin")).toHaveCount(0);
   await b.getByTestId("porta-entrar").click();
   await expect(b.getByTestId("import-file").or(b.getByTestId("calc-valor"))).toBeVisible({ timeout: 60_000 });
   if (await b.getByRole("button", { name: "Começar do zero" }).isVisible()) {

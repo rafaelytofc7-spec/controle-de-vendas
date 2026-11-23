@@ -14,7 +14,7 @@ export function Mais() {
   const { ehDono } = useStore();
   const itens = [
     ...LINKS,
-    ...(ehDono ? [{ to: "/admin", t: "Administração", d: "Equipe, PIN, atividades e loja", icone: "admin" }] : []),
+    ...(ehDono ? [{ to: "/admin", t: "Administração", d: "Equipe, atividades e loja", icone: "admin" }] : []),
     { to: "/relatorios", t: "Relatórios", d: "Totais de cada mês, gráficos e comparação", icone: "grafico" },
   ];
   return (

@@ -46,7 +46,7 @@ async function liberarTentativas(uid: string, falhas = 1) {
   });
 }
 
-describe("regras do Firestore (PIN anônimo, líder e loja compartilhada)", () => {
+describe("regras do Firestore (entrada com nome, líder e loja compartilhada)", () => {
   beforeAll(async () => {
     env = await initializeTestEnvironment({
       projectId: "demo-controle-vendas",
@@ -261,5 +261,57 @@ describe("regras do Firestore (PIN anônimo, líder e loja compartilhada)", () =
     await assertFails(getDoc(doc(fora, "lojas", LOJA, "membros", "lider")));
     await assertFails(getDocs(collection(fora, "lojas", LOJA, "membros")));
     await assertFails(getDocs(collection(fora, "lojas", LOJA, "vendas")));
+  });
+
+  it("usuário autenticado entra só com o nome, vê e registra venda", async () => {
+    await semearLoja();
+    const ana = ctx("ana");
+    const agora = "2026-11-23T12:00:00.000Z";
+    await assertSucceeds(setDoc(doc(ana, "lojas", LOJA, "membros", "ana"), {
+      uid: "ana", nome: "Ana", papel: "membro", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
+    }));
+    await assertSucceeds(getDoc(doc(ana, "lojas", LOJA)));
+    await assertSucceeds(getDocs(collection(ana, "lojas", LOJA, "vendas")));
+    await assertSucceeds(setDoc(doc(ana, "lojas", LOJA, "vendas", "v1"), {
+      valor: 10, criadoPor: "ana", atualizadoPor: "ana", atualizado_em: agora, criado_em: agora,
+    }));
+    await assertFails(setDoc(doc(ana, "lojas", LOJA, "vendas", "v2"), {
+      valor: 10, criadoPor: "local", atualizadoPor: "ana", atualizado_em: agora, criado_em: agora,
+    }));
+    await assertFails(setDoc(doc(ana, "lojas", LOJA, "vendas", "v3"), {
+      valor: 10, criadoPor: "importado", atualizadoPor: "importado", atualizado_em: agora, criado_em: agora,
+    }));
+  });
+
+  it("não-Admin não vira Admin nem altera liderUid", async () => {
+    await semearLoja();
+    const ana = ctx("ana");
+    const agora = "2026-11-23T12:00:00.000Z";
+    await assertSucceeds(setDoc(doc(ana, "lojas", LOJA, "membros", "ana"), {
+      uid: "ana", nome: "Ana", papel: "membro", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
+    }));
+    await assertFails(setDoc(doc(ana, "lojas", LOJA, "membros", "ana"), {
+      uid: "ana", nome: "Ana", papel: "lider", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
+    }));
+    await assertFails(updateDoc(doc(ana, "lojas", LOJA), { liderUid: "ana", atualizado_em: agora }));
+    await assertFails(setDoc(doc(ana, "lojas", LOJA), { liderUid: "ana", atualizado_em: agora }, { merge: true }));
+  });
+
+  it("membro bloqueado não acessa a loja", async () => {
+    await semearLoja();
+    await semRegras(async (db) => {
+      await setDoc(doc(db, "lojas", LOJA, "membros", "ana"), {
+        uid: "ana", nome: "Ana", papel: "membro", bloqueado: true,
+        ultimoAcesso: "2026-11-23T12:00:00.000Z", criado_em: "2026-11-23T12:00:00.000Z",
+      });
+    });
+    const ana = ctx("ana");
+    await assertFails(getDoc(doc(ana, "lojas", LOJA)));
+    await assertFails(getDocs(collection(ana, "lojas", LOJA, "vendas")));
+    await assertFails(setDoc(doc(ana, "lojas", LOJA, "vendas", "v1"), {
+      valor: 10, criadoPor: "ana", atualizadoPor: "ana",
+      atualizado_em: "2026-11-23T12:00:00.000Z", criado_em: "2026-11-23T12:00:00.000Z",
+    }));
+    await assertFails(setDoc(doc(ana, "lojas", LOJA, "membros", "ana"), { ultimoAcesso: "2026-11-23T13:00:00.000Z" }, { merge: true }));
   });
 });

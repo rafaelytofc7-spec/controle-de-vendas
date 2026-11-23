@@ -15,5 +15,5 @@ export function mesmaConfig(a?: FirebaseWebConfig | null, b?: FirebaseWebConfig 
   return a.apiKey === b.apiKey && a.authDomain === b.authDomain && a.projectId === b.projectId && a.appId === b.appId;
 }
 
-/** All devices that enter with the shared PIN use this single Firestore store. */
+/** All devices that enter with a name use this single Firestore store. */
 export const LOJA_NUVEM_ID = "principal";

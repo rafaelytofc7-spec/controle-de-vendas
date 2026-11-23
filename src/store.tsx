@@ -39,7 +39,7 @@ import { enviarPendentes, estadoEquipeLocal, obterCursorSync, ouvirLoja, sincron
 import { isPermissionDenied, mensagemErroSync, rotuloOperacao } from "./lib/errosSync";
 import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
 import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
-import { entrarComPin, isNaoEMembroError, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
+import { entrarComNome, isNaoEMembroError, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
 import { LOJA_NUVEM_ID } from "./lib/firebasePadrao";
 import { calcularReabastecimento } from "./lib/reabastecimento";
 import { acrescentarVendaAgregados, agregarVendas, type AgregadosVendas } from "./lib/agregados";
@@ -102,8 +102,8 @@ interface Store {
   tentarSync: () => Promise<void>;
   statusNuvem: "offline" | "sincronizando" | "sincronizado" | "pendente" | "erro";
   avisoImportados?: string;
-  entrarNaNuvem: (nome: string, pin: string) => Promise<{ primeiraVez: boolean; codigoRecuperacao?: string; retidosImportados?: number }>;
-  recuperarLider: (nome: string, pin: string, codigo: string) => Promise<void>;
+  entrarNaNuvem: (nome: string) => Promise<{ primeiraVez: boolean; codigoRecuperacao?: string; retidosImportados?: number }>;
+  recuperarLider: (nome: string, codigo: string) => Promise<void>;
   sairDaNuvem: () => Promise<void>;
   codigoRecuperacao?: string;
   ehDono: boolean;
@@ -542,7 +542,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const pedirReingresso = useCallback((motivo?: string) => {
     setPrecisaReentrarPin(true);
-    setErroSync(motivo || "Este aparelho não está reconhecido na loja da nuvem. Entre de novo com o mesmo nome e o PIN.");
+    setErroSync(motivo || "Este aparelho não está reconhecido na loja da nuvem. Entre de novo com o mesmo nome.");
   }, []);
 
   const conferirParticipacao = useCallback(async (uid: string): Promise<boolean> => {
@@ -568,10 +568,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [pedirReingresso]);
 
-  const entrarNaNuvem = useCallback(async (nome: string, pin: string) => {
+  const entrarNaNuvem = useCallback(async (nome: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
     const { auth } = iniciarFirebase(firebaseCfg);
-    const estadoPin = await entrarComPin(nome, pin);
+    const estadoPin = await entrarComNome(nome);
     setEquipe(estadoPin);
     setEhDono(Boolean(estadoPin.ehLider));
     setBloqueado(Boolean(estadoPin.bloqueado));
@@ -612,10 +612,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return { primeiraVez: estadoPin.primeiraVez, codigoRecuperacao: estadoPin.codigoRecuperacao, retidosImportados };
   }, [firebaseCfg, recarregar, conferirParticipacao]);
 
-  const recuperarLider = useCallback(async (nome: string, pin: string, codigo: string) => {
+  const recuperarLider = useCallback(async (nome: string, codigo: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
     const { auth } = iniciarFirebase(firebaseCfg);
-    const estadoRec = await recuperarLideranca(nome, pin, codigo);
+    const estadoRec = await recuperarLideranca(nome, codigo);
     setEquipe(estadoRec);
     setEhDono(true);
     setBloqueado(false);

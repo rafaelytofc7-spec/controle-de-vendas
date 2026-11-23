@@ -185,7 +185,7 @@ export async function avisarNovosMembros(membros: MembroLoja[], prefs: PrefsNoti
         prefs,
         chave: "novoMembro",
         titulo: "Alguém entrou na loja",
-        corpo: `${m.nome || "Um aparelho"} entrou com o PIN.`,
+        corpo: `${m.nome || "Um aparelho"} entrou na loja.`,
         id: hashId(`membro:${m.uid}`),
       });
     }

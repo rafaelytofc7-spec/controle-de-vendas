@@ -114,10 +114,15 @@ service cloud.firestore {
           authed()
           && exists(recuperacaoPath(lojaId, request.auth.uid))
           && exists(acessoPath(lojaId))
-          && pinValido(get(recuperacaoPath(lojaId, request.auth.uid)).data.pin)
-          && get(recuperacaoPath(lojaId, request.auth.uid)).data.pin == get(acessoPath(lojaId)).data.pin
           && codigoValido(get(recuperacaoPath(lojaId, request.auth.uid)).data.codigo)
           && get(recuperacaoPath(lojaId, request.auth.uid)).data.codigo == get(acessoPath(lojaId)).data.codigoRecuperacao
+          && (
+            !(get(recuperacaoPath(lojaId, request.auth.uid)).data.keys().hasAny(['pin']))
+            || (
+              pinValido(get(recuperacaoPath(lojaId, request.auth.uid)).data.pin)
+              && get(recuperacaoPath(lojaId, request.auth.uid)).data.pin == get(acessoPath(lojaId)).data.pin
+            )
+          )
           && request.resource.data.liderUid == request.auth.uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liderUid', 'atualizado_em'])
         );
@@ -126,12 +131,20 @@ service cloud.firestore {
       match /membros/{uid} {
         allow read: if ehMembro(lojaId)
           || (authed() && request.auth.uid == uid);
+        // 1.8.0: any signed-in user may join with only a name when the store
+        // already exists (papel membro). Becoming lider is only allowed when
+        // creating the store or when the caller is already liderUid.
+        // 1.7.2 can still join via an ingresso ticket.
         allow create: if authed() && request.auth.uid == uid
           && nomeValido(request.resource.data.nome)
           && !request.resource.data.keys().hasAny(['pin', 'codigo', 'codigoRecuperacao'])
           && request.resource.data.bloqueado == false
           && (
-            exists(ingressoPath(lojaId, uid))
+            (
+              exists(lojaPath(lojaId))
+              && request.resource.data.papel == 'membro'
+            )
+            || exists(ingressoPath(lojaId, uid))
             || (
               request.resource.data.papel == 'lider'
               && (
@@ -200,6 +213,8 @@ service cloud.firestore {
         allow delete: if ehMembro(lojaId);
       }
 
+      // Left in place so 1.7.2 can still join with a PIN until everyone upgrades.
+      // 1.8.0 does not read or write these collections.
       match /privado/acesso {
         allow read, list: if false;
         allow create: if authed()
@@ -208,10 +223,12 @@ service cloud.firestore {
           && !exists(acessoPath(lojaId))
           && (!exists(lojaPath(lojaId)) || lojaDoc(lojaId).data.liderUid == request.auth.uid);
         allow update: if ehLider(lojaId)
-          && pinValido(request.resource.data.pin)
-          && codigoValido(request.resource.data.codigoRecuperacao)
           && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['pin', 'codigoRecuperacao', 'atualizado_em']);
+            .hasOnly(['pin', 'codigoRecuperacao', 'atualizado_em'])
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['pin'])
+            || pinValido(request.resource.data.pin))
+          && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['codigoRecuperacao'])
+            || codigoValido(request.resource.data.codigoRecuperacao));
         allow delete: if false;
       }
 
@@ -268,12 +285,17 @@ service cloud.firestore {
       match /recuperacao/{uid} {
         allow read, list: if false;
         allow create: if authed() && request.auth.uid == uid
-          && pinValido(request.resource.data.pin)
           && codigoValido(request.resource.data.codigo)
           && exists(acessoPath(lojaId))
-          && request.resource.data.pin == get(acessoPath(lojaId)).data.pin
           && request.resource.data.codigo == get(acessoPath(lojaId)).data.codigoRecuperacao
-          && tentativasLiberadas(lojaId);
+          && (
+            !(request.resource.data.keys().hasAny(['pin']))
+            || (
+              pinValido(request.resource.data.pin)
+              && request.resource.data.pin == get(acessoPath(lojaId)).data.pin
+              && tentativasLiberadas(lojaId)
+            )
+          );
         allow delete: if (authed() && request.auth.uid == uid) || ehLider(lojaId);
         allow update: if false;
       }

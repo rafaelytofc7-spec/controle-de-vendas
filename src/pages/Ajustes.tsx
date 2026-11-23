@@ -23,7 +23,6 @@ export function Ajustes() {
   const [aviso, setAviso] = useState("");
   const [cfgTxt, setCfgTxt] = useState(firebaseCfg ? JSON.stringify(firebaseCfg, null, 2) : "");
   const [nomePessoa, setNomePessoa] = useState(equipe?.meuNome ?? "");
-  const [pin, setPin] = useState("");
   const [codigoRec, setCodigoRec] = useState("");
   const [mostrarRecuperacao, setMostrarRecuperacao] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -89,11 +88,10 @@ export function Ajustes() {
     }
   }
 
-  async function entrarPin() {
+  async function entrarNome() {
     setBusy(true); setAviso("");
     try {
-      const r = await entrarNaNuvem(nomePessoa, pin);
-      setPin("");
+      const r = await entrarNaNuvem(nomePessoa);
       if (r.primeiraVez && r.codigoRecuperacao) {
         setAviso(`Você é o Admin desta loja. Anote o código de recuperação: ${r.codigoRecuperacao}. Ele aparece só agora neste aparelho. Sem ele, se este aparelho for perdido, não dá para retomar o papel de Admin.`);
       } else if (r.codigoRecuperacao) {
@@ -109,8 +107,8 @@ export function Ajustes() {
   async function recuperar() {
     setBusy(true); setAviso("");
     try {
-      await recuperarLider(nomePessoa, pin, codigoRec);
-      setPin(""); setCodigoRec("");
+      await recuperarLider(nomePessoa, codigoRec);
+      setCodigoRec("");
       setAviso("O papel de Admin voltou para este aparelho. Anote de novo o código de recuperação guardado na Administração.");
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Não foi possível recuperar o papel de Admin.");
@@ -170,7 +168,7 @@ export function Ajustes() {
           <label className="field">Taxa de entrega<input className="input num" value={taxa} disabled={!podeEditarLoja} onChange={(e) => setTaxa(e.target.value)} /></label>
           <label className="field">Observações<textarea className="input" value={obs} disabled={!podeEditarLoja} onChange={(e) => setObs(e.target.value)} /></label>
           <label className="field">Código da loja (local)<input className="input" value={codigo} disabled={!podeEditarLoja} onChange={(e) => setCodigo(e.target.value)} /></label>
-          <p className="muted small">Na nuvem, todos que entram com o PIN compartilham o mesmo banco. Este código é só local.</p>
+          <p className="muted small">Na nuvem, todos que entram com o próprio nome compartilham o mesmo banco. Este código é só local.</p>
           <label className="field">Horário padrão do lembrete das encomendas
             <input className="input" type="time" value={horaLembrete} disabled={!podeEditarLoja} onChange={(e) => setHoraLembrete(e.target.value)} />
           </label>
@@ -199,7 +197,7 @@ export function Ajustes() {
       {tab === "nuvem" && (
         <div className="card col">
           <h3>Nuvem compartilhada</h3>
-          <p className="muted">A nuvem já vem configurada. Na primeira abertura o aplicativo pede o nome e o PIN e já entra no mesmo banco. O primeiro aparelho vira Admin. A sincronização é automática: não é preciso tocar em “Sincronizar agora”, salvo se quiser forçar uma nova tentativa.</p>
+          <p className="muted">A nuvem já vem configurada. Na primeira abertura o aplicativo pede só o nome e já entra no mesmo banco. O primeiro aparelho vira Admin; os outros entram com o próprio nome. A sincronização é automática: não é preciso tocar em “Sincronizar agora”, salvo se quiser forçar uma nova tentativa.</p>
           <p className="muted small">Só cole um JSON abaixo se quiser usar outro projeto Firebase. A configuração alternativa fica só neste aparelho.</p>
           <textarea className="input mono" value={cfgTxt} onChange={(e) => setCfgTxt(e.target.value)} placeholder='Substituição opcional: { "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }' />
           <div className="row wrap">
@@ -233,10 +231,7 @@ export function Ajustes() {
                   <label className="field">Seu nome
                     <input className="input" value={nomePessoa} onChange={(e) => setNomePessoa(e.target.value)} placeholder="Como você aparece para a equipe" autoComplete="name" />
                   </label>
-                  <label className="field">PIN da loja
-                    <input className="input" type="password" inputMode="numeric" autoComplete="one-time-code" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="4 a 8 números" />
-                  </label>
-                  <button className="btn btn-primary btn-block" disabled={busy || !online} onClick={() => void entrarPin()}>Entrar com o PIN</button>
+                  <button className="btn btn-primary btn-block" disabled={busy || !online} onClick={() => void entrarNome()}>Entrar com o nome</button>
                   <button className="btn" type="button" onClick={() => setMostrarRecuperacao((v) => !v)}>Tenho um código de recuperação</button>
                   {mostrarRecuperacao && (
                     <>

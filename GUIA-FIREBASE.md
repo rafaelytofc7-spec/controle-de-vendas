@@ -1,17 +1,14 @@
 # Como ligar a nuvem
 
-A nuvem já vem configurada neste aplicativo (projeto `controle-de-vendas-bddb9`). Não é preciso colar a configuração web. O acesso deixou de ser por e-mail: o primeiro aparelho que entra com o PIN vira o líder, e os demais usam o mesmo PIN e o mesmo banco.
+A nuvem já vem configurada neste aplicativo (projeto `controle-de-vendas-bddb9`). Não é preciso colar a configuração web. A partir da 1.8.0 a entrada é só com o nome: o acesso anônimo do Firebase identifica o aparelho, e qualquer pessoa autenticada entra na loja compartilhada escrevendo o nome. O Admin atual é preservado.
 
-## 1.6.0 e 1.7.0
+## 1.8.0 — publicar as regras (obrigatório)
 
-A 1.6.0 e a 1.7.0 usam as mesmas regras da 1.5.0. Não é preciso republicar as regras se a 1.5.0 já estiver no ar.
-
-## Mudanças no Console do Firebase (obrigatórias antes da 1.5.0)
+A 1.8.0 só inclui um usuário novo depois que o arquivo [`rules/firestore.rules`](rules/firestore.rules) desta versão estiver publicado no Console. A publicação é feita no navegador, não pelo aplicativo.
 
 Entre em [Firebase Console](https://console.firebase.google.com/project/controle-de-vendas-bddb9) com a conta dona do projeto.
 
-1. **Authentication → Sign-in method → Anonymous → Enable → Save.**  
-   O provedor E-mail/senha pode permanecer ligado até todos atualizarem o aplicativo. Depois da troca, pode ser desligado.
+1. **Authentication → Sign-in method → Anonymous → Enable → Save.**
 2. **Firestore Database → Rules.** Apague o texto atual, cole o conteúdo integral de [`rules/firestore.rules`](rules/firestore.rules) e toque em **Publish**.
 3. Em **Authentication → Settings → Authorized domains**, confirme `localhost` e `rafaelytofc7-spec.github.io`.
 
@@ -20,18 +17,18 @@ Endereços diretos:
 - Autenticação: https://console.firebase.google.com/project/controle-de-vendas-bddb9/authentication/providers
 - Regras: https://console.firebase.google.com/project/controle-de-vendas-bddb9/firestore/rules
 
-Enquanto as regras novas não forem publicadas, **não** troque o site nem o APK da 1.4.0 pela 1.5.0: o aplicativo antigo (e-mail) deixa de sincronizar, e o novo (PIN) ainda não entra.
+Enquanto as regras da 1.8.0 não forem publicadas, a 1.8.0 não consegue incluir um aparelho novo só com o nome. A 1.7.2 continua funcionando com essas regras novas (ainda pede o PIN na tela, e o ingresso antigo segue válido).
 
 ## No celular ou no site (depois das regras)
 
-1. Instale o APK 1.5.0 ou abra o site atualizado. No primeiro uso, importe o arquivo de backup se os dados ainda não estiverem no aparelho (por exemplo `caixa-importacao-2026-11-22-2049.json`, com mesclar pelo id).
-2. Abra **Mais → Ajustes → Nuvem**.
-3. No primeiro aparelho, informe o nome de exibição e o PIN combinado (4 a 8 números) e toque em **Entrar com o PIN**. Esse aparelho vira o líder. Anote o código de recuperação de 8 caracteres e guarde fora do telefone.
-4. Toque em **Sincronizar agora**. Os dados locais sobem para a nuvem. Quem entrar com o mesmo PIN passa a usar o mesmo banco.
-5. Nos outros aparelhos, cada pessoa informa o próprio nome e o mesmo PIN. Não há convite por e-mail.
-6. O líder gerencia a equipe, troca o PIN e pode passar a liderança em **Mais → Administração**.
+1. Instale o APK 1.8.0 ou abra o site atualizado. No primeiro uso, importe o arquivo de backup se os dados ainda não estiverem no aparelho (por exemplo `caixa-importacao-2026-11-22-2049.json`, com mesclar pelo id).
+2. Abra o aplicativo com internet nesta primeira entrada.
+3. Escreva o seu nome e toque em **Entrar**. Se a loja já existe, você entra na equipe. O primeiro aparelho de uma loja nova vira o Admin; o Admin já existente não muda. Anote o código de recuperação de 8 caracteres (aparelho do Admin) e guarde fora do telefone.
+4. A sincronização começa sozinha. O botão **Sincronizar agora** em **Mais → Ajustes → Nuvem** só é preciso para forçar uma nova tentativa.
+5. Nos outros aparelhos, cada pessoa informa só o próprio nome. Não há convite por e-mail nem PIN compartilhado.
+6. O Admin gerencia a equipe (bloquear ou remover) e pode passar a liderança em **Mais → Administração**.
 
-Se o aparelho do líder for perdido, na tela Nuvem use **Tenho um código de recuperação** com o PIN e o código de 8 caracteres.
+Se o aparelho do Admin for perdido, na tela de entrada ou em Nuvem use **Tenho um código de recuperação** com o código de 8 caracteres.
 
 ## Substituição (opcional)
 
@@ -45,9 +42,9 @@ No Google Cloud do mesmo projeto, ative a API do Google Drive, crie um ID do cli
 
 ## Segurança
 
-- O PIN fica num documento privado ilegível pelo cliente; as regras conferem o valor com `get()`.
-- Só quem entrou com o PIN certo (e não está bloqueado) lê ou grava os dados da loja.
-- Só o líder altera membros, o PIN e as configurações da loja.
-- Tentativas erradas ganham espera crescente e, depois de muitas, um bloqueio temporário.
+- Qualquer usuário autenticado (acesso anônimo) pode criar o próprio documento em `membros` com um nome e entrar na loja.
+- Só quem está na equipe e não está bloqueado lê ou grava os dados da loja.
+- Só o Admin altera membros, o código de recuperação e as configurações da loja. O `liderUid` existente é preservado.
+- Dados importados do backup antigo vêm marcados como “importado” e só o Admin envia à nuvem.
 - Não compartilhe o arquivo de backup em repositórios públicos: ele contém o histórico de vendas.
 - Este aplicativo não envia cobranças reais e não guarda tokens de maquininha.

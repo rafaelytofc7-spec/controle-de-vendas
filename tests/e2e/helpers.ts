@@ -1,6 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-/** Marks this device as already in the store so local e2e can skip the PIN gate. */
+/** Marks this device as already in the store so local e2e can skip the entry gate. */
 export async function passarDaPorta(page: Page): Promise<void> {
   const porta = page.getByTestId("porta-entrada");
   await expect(porta.or(page.getByTestId("import-file")).or(page.getByTestId("calc-valor"))).toBeVisible({ timeout: 20_000 });
