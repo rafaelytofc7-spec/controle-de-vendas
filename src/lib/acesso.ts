@@ -1,18 +1,9 @@
-import {
-  Timestamp,
-  deleteDoc,
-  doc,
-  getDoc,
-  setDoc,
-  writeBatch,
-} from "firebase/firestore";
-import { signInAnonymously, updateProfile, type User } from "firebase/auth";
-import { getFirebase } from "./firebase";
-import { LOJA_NUVEM_ID } from "./firebasePadrao";
+import { getSupabase, userDe, type NuvemUser } from "./supabase";
+import { LOJA_NUVEM_ID } from "./supabasePadrao";
 import { agoraIso } from "./datas";
-import { setMeta } from "./db";
-import type { EstadoEquipe, MembroLoja, PapelMembro } from "./types";
-import { upsertMembro } from "./db";
+import { setMeta, upsertMembro } from "./db";
+import type { EstadoEquipe, MembroLoja } from "./types";
+import { membroFromRow } from "./mapeamentoNuvem";
 import { isPermissionDenied } from "./errosSync";
 
 export function pinValido(pin: string): boolean {
@@ -31,90 +22,36 @@ export function gerarCodigoRecuperacao(): string {
   return Array.from(bytes, (b) => alfabeto[b % alfabeto.length]).join("");
 }
 
-/** Internal value written only so the private acesso doc still satisfies 1.7.2 rules. Never shown in the UI. */
-function gerarPinInterno(): string {
-  const bytes = new Uint8Array(6);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => String(b % 10)).join("");
+function msgRpc(e: { message?: string } | null | undefined, fallback: string): string {
+  const m = (e?.message || "").trim();
+  if (!m) return fallback;
+  // PostgREST wraps: "Esse texto"
+  return m.replace(/^.*error:\s*/i, "").replace(/\s+\(SQLSTATE.*$/i, "") || fallback;
 }
 
-function esperaMs(falhas: number): number {
-  if (falhas <= 1) return 1_000;
-  if (falhas === 2) return 2_000;
-  if (falhas === 3) return 4_000;
-  if (falhas === 4) return 8_000;
-  if (falhas === 5) return 16_000;
-  return 30_000;
-}
-
-function refs(uid: string) {
-  const { db } = getFirebase();
-  const loja = LOJA_NUVEM_ID;
-  return {
-    db,
-    loja,
-    lojaRef: doc(db, "lojas", loja),
-    acessoRef: doc(db, "lojas", loja, "privado", "acesso"),
-    tentativasRef: doc(db, "lojas", loja, "tentativas", uid),
-    ingressoRef: doc(db, "lojas", loja, "ingressos", uid),
-    recuperacaoRef: doc(db, "lojas", loja, "recuperacao", uid),
-    membroRef: doc(db, "lojas", loja, "membros", uid),
-  };
-}
-
-async function garantirAuth(): Promise<User> {
-  const { auth } = getFirebase();
-  if (auth.currentUser) return auth.currentUser;
-  const cred = await signInAnonymously(auth);
-  return cred.user;
-}
-
-async function registrarTentativa(uid: string): Promise<void> {
-  const { tentativasRef } = refs(uid);
-  const snap = await getDoc(tentativasRef);
-  if (!snap.exists()) {
-    const liberadaEm = Date.now() + 2_500;
-    await setDoc(tentativasRef, {
-      falhas: 1,
-      proximaTentativa: Timestamp.fromMillis(liberadaEm),
-    });
-    await esperarAte(liberadaEm + 200);
-    return;
+async function garantirAuth(): Promise<NuvemUser> {
+  const sb = getSupabase();
+  const { data: atual } = await sb.auth.getUser();
+  if (atual.user) {
+    const u = userDe(atual.user);
+    if (u) return u;
   }
-  const d = snap.data() as { falhas: number; proximaTentativa: Timestamp; bloqueadoAte?: Timestamp };
-  const proxima = d.proximaTentativa.toMillis();
-  const bloqueadoAte = d.bloqueadoAte?.toMillis() ?? 0;
-  const agora = Date.now();
-  if (d.falhas >= 15 && bloqueadoAte > agora) {
-    const s = Math.ceil((bloqueadoAte - agora) / 1000);
-    throw new Error(`Muitas tentativas. Espere ${s} segundos e tente de novo.`);
+  const { data, error } = await sb.auth.signInAnonymously();
+  if (error || !data.user) {
+    const m = error?.message || "";
+    if (/anonymous/i.test(m) && /disabled|not enabled|not been/i.test(m)) {
+      throw new Error("O login anônimo ainda não foi ligado neste projeto. Abra Authentication > Providers no painel do Supabase e ative Anonymous.");
+    }
+    throw new Error(m || "Não foi possível entrar na nuvem.");
   }
-  if (proxima > agora) await esperarAte(proxima + 200);
-  if (d.falhas >= 15 && bloqueadoAte <= Date.now()) {
-    const liberadaEm = Date.now() + 2_500;
-    await setDoc(tentativasRef, {
-      falhas: 1,
-      proximaTentativa: Timestamp.fromMillis(liberadaEm),
-    });
-    await esperarAte(liberadaEm + 200);
-    return;
-  }
-  const falhas = d.falhas + 1;
-  const payload: Record<string, unknown> = {
-    falhas,
-    proximaTentativa: Timestamp.fromMillis(Math.max(Date.now(), proxima) + esperaMs(falhas)),
-  };
-  if (falhas >= 15) {
-    payload.bloqueadoAte = Timestamp.fromMillis(Date.now() + 15 * 60 * 1000);
-  }
-  await setDoc(tentativasRef, payload);
-  const espera = (payload.proximaTentativa as Timestamp).toMillis();
-  if (espera > Date.now()) await esperarAte(espera + 200);
+  const u = userDe(data.user);
+  if (!u) throw new Error("Não foi possível entrar na nuvem.");
+  return u;
 }
 
-function esperarAte(ts: number): Promise<void> {
-  const ms = Math.max(0, ts - Date.now());
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function gravarNomeAuth(nome: string): Promise<void> {
+  const sb = getSupabase();
+  try { await sb.auth.updateUser({ data: { display_name: nome } }); } catch { /* ignore */ }
 }
 
 async function cacheEquipe(estado: EstadoEquipe, membro: MembroLoja, codigo?: string): Promise<EstadoEquipe> {
@@ -124,17 +61,6 @@ async function cacheEquipe(estado: EstadoEquipe, membro: MembroLoja, codigo?: st
   if (codigo) await setMeta("codigo_recuperacao", codigo);
   return estado;
 }
-
-async function lerSePermitido(ref: ReturnType<typeof doc>) {
-  try {
-    return await getDoc(ref);
-  } catch (e) {
-    // Non-members cannot read the store or the member list; treat as "not found".
-    if ((e as { code?: string }).code === "permission-denied") return null;
-    throw e;
-  }
-}
-
 
 export class NaoEMembroError extends Error {
   constructor(message = "Este aparelho não está reconhecido na loja da nuvem. Entre de novo com o mesmo nome.") {
@@ -147,79 +73,57 @@ export function isNaoEMembroError(e: unknown): boolean {
   return e instanceof NaoEMembroError || (e instanceof Error && e.name === "NaoEMembroError");
 }
 
-/** Uses current rules (permission-denied ⇒ not a member) and the self-read rule when published. */
 export async function verificarParticipacao(uid: string): Promise<"membro" | "ausente" | "bloqueado"> {
-  const { membroRef } = refs(uid);
-  const snap = await lerSePermitido(membroRef);
-  if (!snap?.exists()) return "ausente";
-  if ((snap.data() as MembroLoja).bloqueado) return "bloqueado";
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("membros")
+    .select("uid, bloqueado")
+    .eq("loja_id", LOJA_NUVEM_ID)
+    .eq("uid", uid)
+    .maybeSingle();
+  if (error) {
+    if (isPermissionDenied(error)) return "ausente";
+    throw new Error(error.message);
+  }
+  if (!data) return "ausente";
+  if ((data as { bloqueado?: boolean }).bloqueado) return "bloqueado";
   return "membro";
+}
+
+function estadoDeRpc(row: Record<string, unknown>, nome: string, uid: string): EstadoEquipe {
+  const liderUid = String(row.liderUid ?? row.lider_uid ?? "");
+  const ehLider = Boolean(row.ehLider ?? row.eh_lider ?? (liderUid && liderUid === uid));
+  return {
+    ehDono: ehLider,
+    ehLider,
+    bloqueado: Boolean(row.bloqueado),
+    liderUid,
+    meuNome: String(row.meuNome ?? row.meu_nome ?? nome),
+  };
 }
 
 export async function entrarComNome(nomeBruto: string): Promise<EstadoEquipe & { codigoRecuperacao?: string; primeiraVez: boolean }> {
   const nome = nomeBruto.trim();
   if (!nomeValido(nome)) throw new Error("Informe um nome de 2 a 40 letras.");
   const user = await garantirAuth();
-  try { await updateProfile(user, { displayName: nome }); } catch { /* ignore */ }
-  const { lojaRef, acessoRef, membroRef } = refs(user.uid);
+  await gravarNomeAuth(nome);
+  const sb = getSupabase();
+  const { data, error } = await sb.rpc("entrar_na_loja", { p_nome: nome, p_loja: LOJA_NUVEM_ID });
+  if (error) throw new Error(msgRpc(error, "Não foi possível entrar na loja."));
+  const row = (data ?? {}) as Record<string, unknown>;
+  const estado = estadoDeRpc(row, nome, user.uid);
   const agora = agoraIso();
-
-  const membroSnap = await lerSePermitido(membroRef);
-  if (membroSnap?.exists()) {
-    const atual = membroSnap.data() as MembroLoja;
-    if (atual.bloqueado) throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
-    const lojaSnap = await getDoc(lojaRef);
-    const liderUid = (lojaSnap.data() as { liderUid?: string } | undefined)?.liderUid ?? "";
-    await setDoc(membroRef, { nome, ultimoAcesso: agora }, { merge: true });
-    const estado: EstadoEquipe = {
-      ehDono: liderUid === user.uid, ehLider: liderUid === user.uid, bloqueado: false, liderUid, meuNome: nome,
-    };
-    await cacheEquipe(estado, { ...atual, nome, ultimoAcesso: agora });
-    return { ...estado, primeiraVez: false };
-  }
-
-  // First device: create the store in one batch. Do not getDoc the store first —
-  // the rules hide it from anyone who is not a member, even when it does not exist.
-  const codigo = gerarCodigoRecuperacao();
-  const membroLider: MembroLoja = {
-    uid: user.uid, nome, papel: "lider", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
-  };
-  const batch = writeBatch(refs(user.uid).db);
-  batch.set(lojaRef, { liderUid: user.uid, criado_em: agora });
-  batch.set(acessoRef, { pin: gerarPinInterno(), codigoRecuperacao: codigo, atualizado_em: agora });
-  batch.set(membroRef, membroLider);
-  try {
-    await batch.commit();
-    const estado: EstadoEquipe = {
-      ehDono: true, ehLider: true, bloqueado: false, liderUid: user.uid, meuNome: nome,
-    };
-    await cacheEquipe(estado, membroLider, codigo);
-    return { ...estado, codigoRecuperacao: codigo, primeiraVez: true };
-  } catch (e) {
-    // If the store already exists, create is denied because non-members cannot
-    // create or update the loja document. Fall through and join with the name.
-    void e;
-  }
-
   const membro: MembroLoja = {
-    uid: user.uid, nome, papel: "membro", bloqueado: false, ultimoAcesso: agoraIso(), criado_em: agora,
+    uid: user.uid,
+    nome,
+    papel: estado.ehLider ? "lider" : "membro",
+    bloqueado: false,
+    ultimoAcesso: agora,
+    criado_em: agora,
   };
-  try {
-    await setDoc(membroRef, membro);
-  } catch (e) {
-    if (isPermissionDenied(e)) {
-      throw new Error("A entrada só com o nome ainda não foi liberada na nuvem. Peça ao Admin para publicar as regras novas no Firebase e tente de novo.");
-    }
-    throw e;
-  }
-  const lojaSnap = await getDoc(lojaRef);
-  const liderUid = (lojaSnap.data() as { liderUid?: string } | undefined)?.liderUid ?? "";
-  const ehLider = liderUid === user.uid;
-  const estado: EstadoEquipe = {
-    ehDono: ehLider, ehLider, bloqueado: false, liderUid, meuNome: nome,
-  };
-  await cacheEquipe(estado, { ...membro, papel: ehLider ? "lider" : "membro" });
-  return { ...estado, primeiraVez: false };
+  const codigo = typeof row.codigoRecuperacao === "string" ? row.codigoRecuperacao : undefined;
+  await cacheEquipe(estado, membro, codigo);
+  return { ...estado, codigoRecuperacao: codigo, primeiraVez: Boolean(row.primeiraVez) };
 }
 
 export async function recuperarLideranca(nomeBruto: string, codigoBruto: string): Promise<EstadoEquipe> {
@@ -228,89 +132,59 @@ export async function recuperarLideranca(nomeBruto: string, codigoBruto: string)
   if (!nomeValido(nome)) throw new Error("Informe um nome de 2 a 40 letras.");
   if (!/^[A-Z0-9]{8}$/.test(codigo)) throw new Error("O código de recuperação tem 8 letras ou números.");
   const user = await garantirAuth();
-  try { await updateProfile(user, { displayName: nome }); } catch { /* ignore */ }
-  const { lojaRef, recuperacaoRef, membroRef } = refs(user.uid);
-  try {
-    await setDoc(recuperacaoRef, { codigo, em: agoraIso() });
-  } catch {
-    throw new Error("Código de recuperação incorreto, ou a loja ainda não existe na nuvem.");
-  }
+  await gravarNomeAuth(nome);
+  const sb = getSupabase();
+  const { data, error } = await sb.rpc("recuperar_lideranca", { p_nome: nome, p_codigo: codigo, p_loja: LOJA_NUVEM_ID });
+  if (error) throw new Error(msgRpc(error, "Código de recuperação incorreto, ou a loja ainda não existe na nuvem."));
+  const row = (data ?? {}) as Record<string, unknown>;
+  const estado = estadoDeRpc({ ...row, ehLider: true, liderUid: user.uid }, nome, user.uid);
   const agora = agoraIso();
-  try {
-    await setDoc(lojaRef, { liderUid: user.uid, atualizado_em: agora }, { merge: true });
-  } catch {
-    throw new Error("A loja ainda não existe na nuvem. Entre com o seu nome no primeiro aparelho.");
-  }
-  const membro: MembroLoja = {
+  await cacheEquipe(estado, {
     uid: user.uid, nome, papel: "lider", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
-  };
-  const existente = await getDoc(membroRef);
-  if (existente.exists()) {
-    await setDoc(membroRef, { nome, papel: "lider", ultimoAcesso: agora, bloqueado: false }, { merge: true });
-    membro.criado_em = (existente.data() as MembroLoja).criado_em ?? agora;
-  } else {
-    // After taking leadership, the caller is liderUid so creating as lider is allowed.
-    await setDoc(membroRef, { ...membro, papel: "lider" });
-  }
-  try { await deleteDoc(recuperacaoRef); } catch { /* ignore */ }
-  const estado: EstadoEquipe = {
-    ehDono: true, ehLider: true, bloqueado: false, liderUid: user.uid, meuNome: nome,
-  };
-  await cacheEquipe(estado, membro, codigo);
+  }, codigo);
   return estado;
 }
 
-export async function alterarPin(pinNovo: string, codigoAtual?: string): Promise<string> {
-  if (!pinValido(pinNovo)) throw new Error("O novo PIN deve ter de 4 a 8 números.");
-  const { auth } = getFirebase();
-  const user = auth.currentUser;
-  if (!user) throw new Error("Entre na loja primeiro.");
-  const { acessoRef } = refs(user.uid);
-  const codigo = (codigoAtual && /^[A-Z0-9]{8}$/.test(codigoAtual)) ? codigoAtual : gerarCodigoRecuperacao();
-  await setDoc(acessoRef, { pin: pinNovo, codigoRecuperacao: codigo, atualizado_em: agoraIso() }, { merge: true });
-  await setMeta("codigo_recuperacao", codigo);
-  return codigo;
+export async function alterarPin(_pinNovo: string, _codigoAtual?: string): Promise<string> {
+  void _pinNovo; void _codigoAtual;
+  throw new Error("O PIN não é mais usado. Use o código de recuperação se precisar do papel de Admin.");
 }
 
 export async function renovarCodigoRecuperacao(): Promise<string> {
-  const { auth } = getFirebase();
-  const user = auth.currentUser;
-  if (!user) throw new Error("Entre na loja primeiro.");
-  const novo = gerarCodigoRecuperacao();
-  const { acessoRef } = refs(user.uid);
-  await setDoc(acessoRef, { codigoRecuperacao: novo, atualizado_em: agoraIso() }, { merge: true });
+  const sb = getSupabase();
+  const { data: sess } = await sb.auth.getUser();
+  if (!sess.user) throw new Error("Entre na loja primeiro.");
+  const { data, error } = await sb.rpc("renovar_codigo_recuperacao", { p_loja: LOJA_NUVEM_ID });
+  if (error) throw new Error(msgRpc(error, "Só o Admin renova o código de recuperação."));
+  const novo = String(data ?? "");
+  if (!/^[A-Z0-9]{8}$/.test(novo)) throw new Error("Não foi possível renovar o código.");
   await setMeta("codigo_recuperacao", novo);
   return novo;
 }
 
 export async function transferirLideranca(novoLiderUid: string): Promise<void> {
-  const { auth } = getFirebase();
-  const user = auth.currentUser;
-  if (!user) throw new Error("Entre na loja primeiro.");
-  if (novoLiderUid === user.uid) return;
-  const { loja, lojaRef, db } = refs(user.uid);
-  const alvo = doc(db, "lojas", loja, "membros", novoLiderUid);
-  const snap = await getDoc(alvo);
-  if (!snap.exists()) throw new Error("Essa pessoa não está na equipe.");
-  const agora = agoraIso();
-  const batch = writeBatch(db);
-  batch.set(lojaRef, { liderUid: novoLiderUid, atualizado_em: agora }, { merge: true });
-  batch.set(alvo, { papel: "lider" }, { merge: true });
-  batch.set(doc(db, "lojas", loja, "membros", user.uid), { papel: "membro" }, { merge: true });
-  await batch.commit();
+  const sb = getSupabase();
+  const { data: sess } = await sb.auth.getUser();
+  if (!sess.user) throw new Error("Entre na loja primeiro.");
+  if (novoLiderUid === sess.user.id) return;
+  const { error } = await sb.rpc("transferir_lideranca", { p_novo_uid: novoLiderUid, p_loja: LOJA_NUVEM_ID });
+  if (error) throw new Error(msgRpc(error, "Não foi possível transferir o papel de Admin."));
 }
 
 export async function alterarNomeMembro(uid: string, nomeBruto: string): Promise<void> {
   const nome = nomeBruto.trim();
   if (!nomeValido(nome)) throw new Error("Informe um nome de 2 a 40 letras.");
-  const { auth } = getFirebase();
-  const user = auth.currentUser;
-  if (!user) throw new Error("Entre na loja primeiro.");
-  const { db } = getFirebase();
-  const ref = doc(db, "lojas", LOJA_NUVEM_ID, "membros", uid);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error("Essa pessoa não está na equipe.");
-  await setDoc(ref, { nome }, { merge: true });
-  const atual = snap.data() as MembroLoja;
-  await upsertMembro({ ...atual, nome });
+  const sb = getSupabase();
+  const { data: sess } = await sb.auth.getUser();
+  if (!sess.user) throw new Error("Entre na loja primeiro.");
+  const { data, error } = await sb
+    .from("membros")
+    .update({ nome })
+    .eq("loja_id", LOJA_NUVEM_ID)
+    .eq("uid", uid)
+    .select()
+    .maybeSingle();
+  if (error) throw new Error(msgRpc(error, "Não foi possível alterar o nome."));
+  if (!data) throw new Error("Essa pessoa não está na equipe.");
+  await upsertMembro(membroFromRow(data as Record<string, unknown>));
 }

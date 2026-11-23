@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useStore, exportarDados, montarBackup, marcarBackupFeito } from "../store";
-import { configValida } from "../lib/firebase";
+import { configValida } from "../lib/supabase";
 import { carregarBackupDoDrive, carregarGis, obterTokenDrive, salvarBackupNoDrive } from "../lib/drive";
-import type { FirebaseWebConfig, PrefsNotificacao } from "../lib/types";
+import type { PrefsNotificacao } from "../lib/types";
 import { pedirPermissaoNotificacoes, tocarSomInApp } from "../lib/notificacoes";
 import { GUIA_FIREBASE } from "../lib/guia";
 import { ehNativo, exportarArquivo } from "../lib/plataforma";
@@ -21,7 +21,6 @@ export function Ajustes() {
   const [horaLembrete, setHoraLembrete] = useState(config.hora_lembrete_padrao || "12:00");
   const [codigo, setCodigo] = useState(loja);
   const [aviso, setAviso] = useState("");
-  const [cfgTxt, setCfgTxt] = useState(firebaseCfg ? JSON.stringify(firebaseCfg, null, 2) : "");
   const [nomePessoa, setNomePessoa] = useState(equipe?.meuNome ?? "");
   const [codigoRec, setCodigoRec] = useState("");
   const [mostrarRecuperacao, setMostrarRecuperacao] = useState(false);
@@ -30,9 +29,6 @@ export function Ajustes() {
   const [versaoRemota, setVersaoRemota] = useState<string>();
   const nativo = ehNativo();
 
-  useEffect(() => {
-    setCfgTxt(firebaseOverride && firebaseCfg ? JSON.stringify(firebaseCfg, null, 2) : "");
-  }, [firebaseOverride, firebaseCfg]);
   const podeEditarLoja = ehDono || !usuario;
 
   useEffect(() => {
@@ -75,17 +71,6 @@ export function Ajustes() {
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Falha na importação.");
     } finally { setBusy(false); }
-  }
-
-  async function salvarCfgFb() {
-    try {
-      const parsed = JSON.parse(cfgTxt) as FirebaseWebConfig;
-      if (!configValida(parsed)) throw new Error("Faltam apiKey, authDomain, projectId ou appId.");
-      await salvarFirebase(parsed);
-      setAviso("Configuração alternativa salva neste aparelho. Ela substitui a nuvem padrão.");
-    } catch (e) {
-      setAviso(e instanceof Error ? e.message : "JSON inválido.");
-    }
   }
 
   async function entrarNome() {
@@ -197,16 +182,15 @@ export function Ajustes() {
       {tab === "nuvem" && (
         <div className="card col">
           <h3>Nuvem compartilhada</h3>
-          <p className="muted">A nuvem já vem configurada. Na primeira abertura o aplicativo pede só o nome e já entra no mesmo banco. O primeiro aparelho vira Admin; os outros entram com o próprio nome. A sincronização é automática: não é preciso tocar em “Sincronizar agora”, salvo se quiser forçar uma nova tentativa.</p>
-          <p className="muted small">Só cole um JSON abaixo se quiser usar outro projeto Firebase. A configuração alternativa fica só neste aparelho.</p>
-          <textarea className="input mono" value={cfgTxt} onChange={(e) => setCfgTxt(e.target.value)} placeholder='Substituição opcional: { "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }' />
-          <div className="row wrap">
-            <button className="btn" onClick={() => void salvarCfgFb()}>Salvar substituição</button>
-            {firebaseOverride && <button className="btn" onClick={() => void limparFirebase().then(() => setAviso("Voltou à nuvem padrão do aplicativo."))}>Usar nuvem padrão</button>}
-          </div>
+          <p className="muted">A nuvem já vem configurada neste aplicativo. Na primeira abertura ele pede só o nome e já entra no mesmo banco. Se a loja já existe, quem entra vira membro; o Admin é quem usa o código de recuperação. A sincronização é automática: não é preciso tocar em “Sincronizar agora”, salvo se quiser forçar uma nova tentativa.</p>
+          {firebaseOverride && (
+            <div className="row wrap">
+              <button className="btn" onClick={() => void limparFirebase().then(() => setAviso("Voltou à nuvem padrão do aplicativo."))}>Usar nuvem padrão</button>
+            </div>
+          )}
           {configValida(firebaseCfg) && (
             <>
-              <p className="muted small">Projeto: {firebaseCfg?.projectId} · {online ? "online" : "offline"} · {usuario ? (equipe?.ehLider || ehDono ? `Admin: ${equipe?.meuNome || usuario.displayName || "você"}` : `conectado: ${equipe?.meuNome || usuario.displayName || "aparelho"}`) : "não conectado"} · {statusNuvem}</p>
+              <p className="muted small">Projeto: controle-de-vendas · {online ? "online" : "offline"} · {usuario ? (equipe?.ehLider || ehDono ? `Admin: ${equipe?.meuNome || usuario.displayName || "você"}` : `conectado: ${equipe?.meuNome || usuario.displayName || "aparelho"}`) : "não conectado"} · {statusNuvem}</p>
               <div className="status-sync-detalhe" data-testid="status-sync-detalhe">
                 <div data-testid="pendentes-sync">{pendentesCount === 0 ? "Nada pendente de envio." : pendentesCount === 1 ? "1 alteração pendente de envio." : `${pendentesCount} alterações pendentes de envio.`}</div>
                 <div data-testid="ultimo-sync">{ultimoSync ? `Último sync: ${formatarDataHora(ultimoSync)}` : "Ainda não sincronizou neste aparelho."}</div>

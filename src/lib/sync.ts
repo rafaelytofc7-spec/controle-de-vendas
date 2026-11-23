@@ -1,23 +1,5 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  documentId,
-  getDoc,
-  getDocs,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  setDoc,
-  startAfter,
-  where,
-  writeBatch,
-  type DocumentData,
-  type QueryDocumentSnapshot,
-} from "firebase/firestore";
-import type { User } from "firebase/auth";
-import { getFirebase } from "./firebase";
+import type { NuvemUser } from "./supabase";
+import { getSupabase } from "./supabase";
 import {
   getMeta,
   listarAtividades,
@@ -49,27 +31,34 @@ import { agoraIso } from "./datas";
 import { podeEnviarRegistro, corrigirAutoriaLocalParaEnvio, registroImportado } from "./autoria";
 import { NaoEMembroError, verificarParticipacao } from "./acesso";
 import { isPermissionDenied, mensagemErroSync, rotuloOperacao } from "./errosSync";
+import {
+  atividadeFromRow,
+  atividadeToRow,
+  cobrancaFromRow,
+  cobrancaToRow,
+  configFromRow,
+  configToRow,
+  encomendaFromRow,
+  encomendaToRow,
+  entregaFromRow,
+  entregaToRow,
+  membroFromRow,
+  produtoFromRow,
+  produtoToRow,
+  reabastecimentoFromRow,
+  reabastecimentoToRow,
+  rowDe,
+  vendaFromRow,
+  vendaToRow,
+  type ColecaoDados,
+} from "./mapeamentoNuvem";
 export { mensagemErroSync };
 
-const LOTE = 400;
+const LOTE = 200;
+const TABELAS: ColecaoDados[] = ["vendas", "produtos", "entregas", "encomendas", "cobrancas", "reabastecimentos"];
 
-
-/** Firestore rejects `undefined` field values. */
-function semUndefined(data: Record<string, unknown> | DocumentData): DocumentData {
-  const out: DocumentData = {};
-  for (const [k, v] of Object.entries(data)) {
-    if (v !== undefined) out[k] = v;
-  }
-  return out;
-}
-
-async function persistirAutoriaCorrigida(colecao: string, row: Record<string, unknown>): Promise<void> {
-  if (colecao === "vendas") await upsertVenda(row as unknown as Venda, false);
-  else if (colecao === "produtos") await upsertProduto(row as unknown as Produto, false);
-  else if (colecao === "entregas") await upsertEntrega(row as unknown as Entrega, false);
-  else if (colecao === "encomendas") await upsertEncomenda(row as unknown as Encomenda, false);
-  else if (colecao === "cobrancas") await upsertCobranca(row as unknown as Cobranca, false);
-  else if (colecao === "reabastecimentos") await upsertReabastecimento(row as unknown as Reabastecimento, false);
+async function cacheEstado(estado: EstadoEquipe): Promise<void> {
+  await setMeta("equipe", estado);
 }
 
 export const META_CURSOR_SYNC = "cursor_sync";
@@ -95,143 +84,9 @@ export type MudancaNuvem = {
 };
 
 export interface ProgressoSync {
-
   fase: string;
   feito: number;
   total: number;
-}
-
-export async function garantirMembro(loja: string, user: User): Promise<EstadoEquipe> {
-  const { db } = getFirebase();
-  const participacao = await verificarParticipacao(user.uid);
-  if (participacao === "ausente") throw new NaoEMembroError();
-  if (participacao === "bloqueado") {
-    const estado: EstadoEquipe = { ehDono: false, ehLider: false, bloqueado: true, liderUid: "", meuNome: "" };
-    await cacheEstado(estado);
-    throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
-  }
-  const lojaRef = doc(db, "lojas", loja);
-  let snap;
-  try {
-    snap = await getDoc(lojaRef);
-  } catch (e) {
-    if (isPermissionDenied(e)) throw new NaoEMembroError();
-    throw e;
-  }
-  if (!snap.exists()) {
-    throw new NaoEMembroError("A loja ainda não existe na nuvem. Entre com o seu nome na tela de entrada.");
-  }
-  const liderUid = (snap.data() as { liderUid?: string }).liderUid ?? "";
-  const membroRef = doc(db, "lojas", loja, "membros", user.uid);
-  const membroSnap = await getDoc(membroRef);
-  if (!membroSnap.exists()) {
-    throw new NaoEMembroError();
-  }
-  const atual = membroSnap.data() as MembroLoja;
-  if (atual.bloqueado) {
-    const estado: EstadoEquipe = { ehDono: false, ehLider: false, bloqueado: true, liderUid, meuNome: atual.nome ?? "" };
-    await cacheEstado(estado);
-    throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
-  }
-  const agora = agoraIso();
-  await setDoc(membroRef, { ultimoAcesso: agora }, { merge: true });
-  await upsertMembro({ ...atual, ultimoAcesso: agora, nome: atual.nome ?? "", papel: atual.papel ?? (liderUid === user.uid ? "lider" : "membro") });
-  const ehLider = liderUid === user.uid;
-  const estado: EstadoEquipe = { ehDono: ehLider, ehLider, bloqueado: false, liderUid, meuNome: atual.nome ?? "" };
-  await cacheEstado(estado);
-  return estado;
-}
-
-async function cacheEstado(estado: EstadoEquipe): Promise<void> {
-  await setMeta("equipe", estado);
-}
-
-export async function estadoEquipeLocal(): Promise<EstadoEquipe | undefined> {
-  return getMeta<EstadoEquipe>("equipe");
-}
-
-export async function bloquearMembro(loja: string, uid: string, bloqueado: boolean): Promise<void> {
-  const { db } = getFirebase();
-  const ref = doc(db, "lojas", loja, "membros", uid);
-  await setDoc(ref, { bloqueado }, { merge: true });
-  const locais = await listarMembros();
-  const atual = locais.find((m) => m.uid === uid);
-  if (atual) await upsertMembro({ ...atual, bloqueado });
-}
-
-export async function removerMembro(loja: string, uid: string): Promise<void> {
-  const { db } = getFirebase();
-  await deleteDoc(doc(db, "lojas", loja, "membros", uid));
-  await removerMembroLocal(uid);
-}
-
-
-async function escreverLote(itens: Array<{ path: string[]; data: DocumentData }>) {
-  const { db } = getFirebase();
-  for (let i = 0; i < itens.length; i += LOTE) {
-    const fatia = itens.slice(i, i + LOTE);
-    const batch = writeBatch(db);
-    for (const it of fatia) {
-      batch.set(doc(db, ...(it.path as [string, ...string[]])), semUndefined(it.data), { merge: true });
-    }
-    await batch.commit();
-  }
-}
-
-export async function uploadInicial(
-  loja: string,
-  user: User,
-  onProg?: (p: ProgressoSync) => void,
-): Promise<void> {
-  const estado = await estadoEquipeLocal();
-  const ehAdmin = Boolean(estado?.ehDono || estado?.ehLider);
-  const vendas = await listarVendas();
-  const produtos = await listarProdutos();
-  const entregas = await listarEntregas();
-  const encomendas = await listarEncomendas();
-  const cobrancas = await listarCobrancas(10_000);
-  const reab = await listarReabastecimentos();
-  const cfg = await obterConfig();
-  const itens: Array<{ path: string[]; data: DocumentData }> = [];
-  if (cfg && ehAdmin) itens.push({ path: ["lojas", loja, "configuracao", "atual"], data: cfg });
-  for (const v of vendas) if (podeEnviarRegistro(v, ehAdmin)) itens.push({ path: ["lojas", loja, "vendas", v.id], data: v });
-  for (const p of produtos) if (podeEnviarRegistro(p, ehAdmin)) itens.push({ path: ["lojas", loja, "produtos", p.id], data: p });
-  for (const e of entregas) if (podeEnviarRegistro(e, ehAdmin)) itens.push({ path: ["lojas", loja, "entregas", e.id], data: e });
-  for (const e of encomendas) if (podeEnviarRegistro(e, ehAdmin)) itens.push({ path: ["lojas", loja, "encomendas", e.id], data: e });
-  for (const c of cobrancas) if (podeEnviarRegistro(c, ehAdmin)) itens.push({ path: ["lojas", loja, "cobrancas", c.id], data: c });
-  for (const r of reab) if (podeEnviarRegistro(r, ehAdmin)) itens.push({ path: ["lojas", loja, "reabastecimentos", r.id], data: r });
-
-  const total = itens.length;
-  onProg?.({ fase: "enviando", feito: 0, total });
-  for (let i = 0; i < itens.length; i += LOTE) {
-    await escreverLote(itens.slice(i, i + LOTE));
-    onProg?.({ fase: "enviando", feito: Math.min(i + LOTE, total), total });
-  }
-  await setMeta("precisa_upload_inicial", false);
-  await setMeta("ultimo_sync", new Date().toISOString());
-  void user;
-}
-
-async function puxarColecao(loja: string, colecao: string, desde?: string) {
-  const { db } = getFirebase();
-  const col = collection(db, "lojas", loja, colecao);
-  const out: DocumentData[] = [];
-  let ultimo: QueryDocumentSnapshot | undefined;
-  for (;;) {
-    const q = desde
-      ? (ultimo
-        ? query(col, where("atualizado_em", ">", desde), orderBy("atualizado_em"), startAfter(ultimo), limit(LOTE))
-        : query(col, where("atualizado_em", ">", desde), orderBy("atualizado_em"), limit(LOTE)))
-      : (ultimo
-        ? query(col, orderBy(documentId()), startAfter(ultimo), limit(LOTE))
-        : query(col, orderBy(documentId()), limit(LOTE)));
-    const snap = await getDocs(q);
-    if (snap.empty) break;
-    for (const docu of snap.docs) out.push({ id: docu.id, ...docu.data() });
-    ultimo = snap.docs[snap.docs.length - 1];
-    if (snap.size < LOTE) break;
-  }
-  return out;
 }
 
 function avancarMax(atual: string, iso?: string | null): string {
@@ -246,6 +101,168 @@ function maisNovo(local?: string | null, remoto?: string | null): "local" | "rem
   if (remoto > local) return "remoto";
   if (local > remoto) return "local";
   return "igual";
+}
+
+async function persistirAutoriaCorrigida(colecao: string, row: Record<string, unknown>): Promise<void> {
+  if (colecao === "vendas") await upsertVenda(row as unknown as Venda, false);
+  else if (colecao === "produtos") await upsertProduto(row as unknown as Produto, false);
+  else if (colecao === "entregas") await upsertEntrega(row as unknown as Entrega, false);
+  else if (colecao === "encomendas") await upsertEncomenda(row as unknown as Encomenda, false);
+  else if (colecao === "cobrancas") await upsertCobranca(row as unknown as Cobranca, false);
+  else if (colecao === "reabastecimentos") await upsertReabastecimento(row as unknown as Reabastecimento, false);
+}
+
+async function aplicarRemoto(colecao: ColecaoDados, r: Record<string, unknown>, loja: string): Promise<void> {
+  if (colecao === "vendas") await upsertVenda(vendaFromRow(r), false);
+  else if (colecao === "produtos") {
+    const barras = await barrasDeProduto(loja, String(r.id));
+    await upsertProduto(produtoFromRow(r, barras), false);
+  } else if (colecao === "entregas") await upsertEntrega(entregaFromRow(r), false);
+  else if (colecao === "encomendas") await upsertEncomenda(encomendaFromRow(r), false);
+  else if (colecao === "cobrancas") await upsertCobranca(cobrancaFromRow(r), false);
+  else await upsertReabastecimento(reabastecimentoFromRow(r), false);
+}
+
+async function obterLocal(colecao: ColecaoDados, id: string): Promise<{ atualizado_em: string } | undefined> {
+  if (colecao === "vendas") return obterVenda(id);
+  if (colecao === "produtos") return obterProduto(id);
+  if (colecao === "entregas") return obterEntrega(id);
+  if (colecao === "encomendas") return obterEncomenda(id);
+  if (colecao === "cobrancas") return obterCobranca(id);
+  return obterReabastecimento(id);
+}
+
+async function barrasDeProduto(loja: string, produtoId: string): Promise<string[]> {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("codigos_barras")
+    .select("codigo")
+    .eq("loja_id", loja)
+    .eq("produto_id", produtoId);
+  if (error) return [];
+  return (data ?? []).map((r) => String((r as { codigo: string }).codigo)).filter(Boolean);
+}
+
+async function gravarBarras(loja: string, produto: Produto): Promise<void> {
+  const sb = getSupabase();
+  const lista = (produto.codigos_barras ?? []).map((c) => String(c).trim()).filter(Boolean);
+  await sb.from("codigos_barras").delete().eq("loja_id", loja).eq("produto_id", produto.id);
+  if (!lista.length) return;
+  const { error } = await sb.from("codigos_barras").upsert(
+    lista.map((codigo) => ({ loja_id: loja, produto_id: produto.id, codigo })),
+    { onConflict: "loja_id,codigo" },
+  );
+  if (error) throw error;
+}
+
+async function upsertLinhas(tabela: string, rows: Record<string, unknown>[], onConflict: string): Promise<void> {
+  if (!rows.length) return;
+  const sb = getSupabase();
+  for (let i = 0; i < rows.length; i += LOTE) {
+    const fatia = rows.slice(i, i + LOTE);
+    const { error } = await sb.from(tabela).upsert(fatia, { onConflict });
+    if (error) throw error;
+  }
+}
+
+async function barrasDeLoja(loja: string): Promise<Map<string, string[]>> {
+  const sb = getSupabase();
+  const mapa = new Map<string, string[]>();
+  const { data, error } = await sb.from("codigos_barras").select("produto_id, codigo").eq("loja_id", loja);
+  if (error) return mapa;
+  for (const r of data ?? []) {
+    const id = String((r as { produto_id: string }).produto_id);
+    const codigo = String((r as { codigo: string }).codigo);
+    const arr = mapa.get(id) ?? [];
+    arr.push(codigo);
+    mapa.set(id, arr);
+  }
+  return mapa;
+}
+
+export async function garantirMembro(loja: string, user: NuvemUser): Promise<EstadoEquipe> {
+  const sb = getSupabase();
+  const participacao = await verificarParticipacao(user.uid);
+  if (participacao === "ausente") throw new NaoEMembroError();
+  if (participacao === "bloqueado") {
+    const estado: EstadoEquipe = { ehDono: false, ehLider: false, bloqueado: true, liderUid: "", meuNome: "" };
+    await cacheEstado(estado);
+    throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
+  }
+  const { data: lojaRow, error: lojaErr } = await sb.from("lojas").select("id, lider_uid").eq("id", loja).maybeSingle();
+  if (lojaErr) {
+    if (isPermissionDenied(lojaErr)) throw new NaoEMembroError();
+    throw new Error(lojaErr.message);
+  }
+  if (!lojaRow) throw new NaoEMembroError("A loja ainda não existe na nuvem. Entre com o seu nome na tela de entrada.");
+  const liderUid = String((lojaRow as { lider_uid?: string }).lider_uid ?? "");
+  const { data: membroRow, error: memErr } = await sb
+    .from("membros")
+    .select("*")
+    .eq("loja_id", loja)
+    .eq("uid", user.uid)
+    .maybeSingle();
+  if (memErr) {
+    if (isPermissionDenied(memErr)) throw new NaoEMembroError();
+    throw new Error(memErr.message);
+  }
+  if (!membroRow) throw new NaoEMembroError();
+  const atual = membroFromRow(membroRow as Record<string, unknown>);
+  if (atual.bloqueado) {
+    const estado: EstadoEquipe = { ehDono: false, ehLider: false, bloqueado: true, liderUid, meuNome: atual.nome ?? "" };
+    await cacheEstado(estado);
+    throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
+  }
+  const agora = agoraIso();
+  await sb.from("membros").update({ ultimo_acesso: agora }).eq("loja_id", loja).eq("uid", user.uid);
+  await upsertMembro({ ...atual, ultimoAcesso: agora, nome: atual.nome ?? "", papel: atual.papel ?? (liderUid === user.uid ? "lider" : "membro") });
+  const ehLider = liderUid === user.uid;
+  const estado: EstadoEquipe = { ehDono: ehLider, ehLider, bloqueado: false, liderUid, meuNome: atual.nome ?? "" };
+  await cacheEstado(estado);
+  return estado;
+}
+
+export async function estadoEquipeLocal(): Promise<EstadoEquipe | undefined> {
+  return getMeta<EstadoEquipe>("equipe");
+}
+
+export async function bloquearMembro(loja: string, uid: string, bloqueado: boolean): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from("membros").update({ bloqueado }).eq("loja_id", loja).eq("uid", uid);
+  if (error) throw new Error(error.message);
+  const locais = await listarMembros();
+  const atual = locais.find((m) => m.uid === uid);
+  if (atual) await upsertMembro({ ...atual, bloqueado });
+}
+
+export async function removerMembro(loja: string, uid: string): Promise<void> {
+  const sb = getSupabase();
+  const { error } = await sb.from("membros").delete().eq("loja_id", loja).eq("uid", uid);
+  if (error) throw new Error(error.message);
+  await removerMembroLocal(uid);
+}
+
+async function puxarColecao(loja: string, colecao: string, desde?: string): Promise<Record<string, unknown>[]> {
+  const sb = getSupabase();
+  const out: Record<string, unknown>[] = [];
+  let from = 0;
+  for (;;) {
+    let q = sb.from(colecao).select("*").eq("loja_id", loja).range(from, from + LOTE - 1);
+    if (desde && colecao !== "membros" && colecao !== "atividades") {
+      q = q.gt("atualizado_em", desde).order("atualizado_em", { ascending: true });
+    } else if (colecao === "atividades") {
+      q = q.order("em", { ascending: true });
+    } else {
+      q = q.order("id", { ascending: true });
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    const rows = (data ?? []) as Record<string, unknown>[];
+    out.push(...rows);
+    if (rows.length < LOTE) break;
+    from += LOTE;
+  }
+  return out;
 }
 
 export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => void): Promise<void> {
@@ -263,32 +280,18 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
     }
   }
   let maxEm = cursor || "";
+  const barras = await barrasDeLoja(loja);
 
-  const mesclar = async (
-    colecao: "vendas" | "produtos" | "entregas" | "encomendas" | "cobrancas" | "reabastecimentos",
-  ) => {
+  const mesclar = async (colecao: ColecaoDados) => {
     const rows = await puxarColecao(loja, colecao, cursor);
     for (const r of rows) {
       maxEm = avancarMax(maxEm, typeof r.atualizado_em === "string" ? r.atualizado_em : undefined);
       const id = String(r.id);
-      if (colecao === "vendas") {
-        const local = await obterVenda(id);
-        if (!local || maisNovo(local.atualizado_em, r.atualizado_em as string) === "remoto") await upsertVenda(r as Venda, false);
-      } else if (colecao === "produtos") {
-        const local = await obterProduto(id);
-        if (!local || maisNovo(local.atualizado_em, r.atualizado_em as string) === "remoto") await upsertProduto(r as Produto, false);
-      } else if (colecao === "entregas") {
-        const local = await obterEntrega(id);
-        if (!local || maisNovo(local.atualizado_em, r.atualizado_em as string) === "remoto") await upsertEntrega(r as Entrega, false);
-      } else if (colecao === "encomendas") {
-        const local = await obterEncomenda(id);
-        if (!local || maisNovo(local.atualizado_em, r.atualizado_em as string) === "remoto") await upsertEncomenda(r as Encomenda, false);
-      } else if (colecao === "cobrancas") {
-        const local = await obterCobranca(id);
-        if (!local || maisNovo(local.atualizado_em, r.atualizado_em as string) === "remoto") await upsertCobranca(r as Cobranca, false);
-      } else {
-        const local = await obterReabastecimento(id);
-        if (!local || maisNovo(local.atualizado_em, r.atualizado_em as string) === "remoto") await upsertReabastecimento(r as Reabastecimento, false);
+      const local = await obterLocal(colecao, id);
+      const em = typeof r.atualizado_em === "string" ? r.atualizado_em : undefined;
+      if (!local || maisNovo(local.atualizado_em, em) === "remoto") {
+        if (colecao === "produtos") await upsertProduto(produtoFromRow(r, barras.get(id)), false);
+        else await aplicarRemoto(colecao, r, loja);
       }
     }
   };
@@ -304,15 +307,15 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
   await mesclar("cobrancas");
   onProg?.({ fase: "baixando", feito: 5, total: 8 });
   await mesclar("reabastecimentos");
-  const { db } = getFirebase();
-  const cfgSnap = await getDoc(doc(db, "lojas", loja, "configuracao", "atual"));
-  if (cfgSnap.exists()) {
-    const remoto = cfgSnap.data();
+  const sb = getSupabase();
+  const { data: cfgSnap } = await sb.from("configuracao").select("*").eq("loja_id", loja).maybeSingle();
+  if (cfgSnap) {
+    const remoto = configFromRow(cfgSnap as Record<string, unknown>);
     const local = await obterConfig();
     const eq = await estadoEquipeLocal();
     const forcarRemoto = eq && !eq.ehDono;
     if (forcarRemoto || maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
-      await salvarConfig(remoto as never, false);
+      await salvarConfig(remoto, false);
     }
   }
   onProg?.({ fase: "baixando", feito: 6, total: 8 });
@@ -320,17 +323,9 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
   const membrosR = await puxarColecao(loja, "membros");
   const vistos = new Set<string>();
   for (const r of membrosR) {
-    const uid = String(r.uid || r.id);
-    vistos.add(uid);
-    await upsertMembro({
-      uid,
-      nome: String(r.nome ?? r.email ?? uid),
-      papel: r.papel === "lider" ? "lider" : "membro",
-      email: r.email ? String(r.email) : undefined,
-      bloqueado: Boolean(r.bloqueado),
-      ultimoAcesso: r.ultimoAcesso ?? null,
-      criado_em: r.criado_em || agoraIso(),
-    });
+    const m = membroFromRow(r);
+    vistos.add(m.uid);
+    await upsertMembro(m);
   }
   for (const local of await listarMembros()) {
     if (!vistos.has(local.uid)) await removerMembroLocal(local.uid);
@@ -340,17 +335,7 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
   try {
     const atividadesR = await puxarColecao(loja, "atividades");
     for (const r of atividadesR) {
-      await upsertAtividade({
-        id: String(r.id),
-        loja,
-        uid: String(r.uid ?? ""),
-        email: String(r.email ?? ""),
-        acao: r.acao,
-        colecao: String(r.colecao ?? ""),
-        registroId: String(r.registroId ?? ""),
-        resumo: String(r.resumo ?? ""),
-        em: String(r.em ?? ""),
-      } as Atividade, false);
+      await upsertAtividade(atividadeFromRow(r, loja), false);
     }
   } catch {
     // only the owner can read the activity log
@@ -359,15 +344,33 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
   await gravarCursorSync(maxEm || new Date().toISOString());
 }
 
+async function enviarLinha(loja: string, colecao: string, data: Record<string, unknown> | undefined, acao?: string): Promise<void> {
+  if (colecao === "configuracao") {
+    if (!data) return;
+    await upsertLinhas("configuracao", [configToRow(data as unknown as import("./types").ConfiguracaoLoja, loja)], "loja_id");
+    return;
+  }
+  const payload = data
+    ? (acao === "delete" || data.excluido
+      ? rowDe(colecao, { ...data, excluido: true, atualizado_em: new Date().toISOString() }, loja)
+      : rowDe(colecao, data, loja))
+    : rowDe(colecao, { id: "", excluido: true, atualizado_em: new Date().toISOString() } as unknown as Record<string, unknown>, loja);
+  await upsertLinhas(colecao, [payload], "loja_id,id");
+  if (colecao === "produtos" && data) {
+    await gravarBarras(loja, data as unknown as Produto);
+  }
+}
+
 export type RecusaEnvio = { colecao: string; id: string; motivo: string };
 
 export async function enviarPendentes(loja: string, ehDono: boolean): Promise<{ enviados: number; recusados: RecusaEnvio[] }> {
-  const { db, auth } = getFirebase();
+  const sb = getSupabase();
   const pendentes = await listarPendentes();
   if (!pendentes.length) return { enviados: 0, recusados: [] };
   const cfg = await obterConfig();
-  const uid = auth.currentUser?.uid ?? "";
-  const nome = (auth.currentUser?.displayName || auth.currentUser?.email || "").trim();
+  const { data: sess } = await sb.auth.getUser();
+  const uid = sess.user?.id ?? "";
+  const nome = String((sess.user?.user_metadata as { display_name?: string } | undefined)?.display_name || sess.user?.email || "").trim();
   const cache = new Map<string, Map<string, unknown>>();
   const obter = async (colecao: string, id: string): Promise<unknown> => {
     if (colecao === "configuracao") return cfg;
@@ -378,13 +381,14 @@ export async function enviarPendentes(loja: string, ehDono: boolean): Promise<{ 
   };
 
   const gravarUm = async (p: (typeof pendentes)[number]): Promise<"enviado" | "recusado" | "ignorado"> => {
-    const batch = writeBatch(db);
-    if (p.colecao === "configuracao") {
-      if (!(ehDono && cfg)) return "ignorado";
-      batch.set(doc(db, "lojas", loja, "configuracao", "atual"), semUndefined(cfg as unknown as Record<string, unknown>), { merge: true });
-    } else {
+    try {
+      if (p.colecao === "configuracao") {
+        if (!(ehDono && cfg)) return "ignorado";
+        await enviarLinha(loja, "configuracao", cfg as unknown as Record<string, unknown>);
+        await limparPendente(p.id);
+        return "enviado";
+      }
       let data = await obter(p.colecao, p.id) as Record<string, unknown> | undefined;
-      const ref = doc(db, "lojas", loja, p.colecao, p.id);
       if (data) {
         const corr = corrigirAutoriaLocalParaEnvio(data, uid, nome);
         if (corr.alterou) {
@@ -397,15 +401,12 @@ export async function enviarPendentes(loja: string, ehDono: boolean): Promise<{ 
         }
       }
       if (p.acao === "delete" || data?.excluido) {
-        batch.set(ref, semUndefined({ ...(data ?? { id: p.id }), excluido: true, atualizado_em: new Date().toISOString() }), { merge: true });
+        await enviarLinha(loja, p.colecao, { ...(data ?? { id: p.id }), excluido: true } as Record<string, unknown>, "delete");
       } else if (data) {
-        batch.set(ref, semUndefined(data), { merge: true });
+        await enviarLinha(loja, p.colecao, data);
       } else {
         return "ignorado";
       }
-    }
-    try {
-      await batch.commit();
       await limparPendente(p.id);
       return "enviado";
     } catch (e) {
@@ -419,51 +420,64 @@ export async function enviarPendentes(loja: string, ehDono: boolean): Promise<{ 
 
   let enviadosTotal = 0;
   const recusados: RecusaEnvio[] = [];
+  const lote: typeof pendentes = [];
+  const loteRows: Array<{ colecao: string; row: Record<string, unknown> }> = [];
 
-  for (let i = 0; i < pendentes.length; i += LOTE) {
-    const fatia = pendentes.slice(i, i + LOTE);
-    const batch = writeBatch(db);
-    const enviados: typeof fatia = [];
-    for (const p of fatia) {
-      if (p.colecao === "configuracao") {
-        if (ehDono && cfg) {
-          batch.set(doc(db, "lojas", loja, "configuracao", "atual"), semUndefined(cfg as unknown as Record<string, unknown>), { merge: true });
-          enviados.push(p);
-        }
+  for (const p of pendentes) {
+    if (p.colecao === "configuracao") {
+      if (ehDono && cfg) {
+        lote.push(p);
+        loteRows.push({ colecao: "configuracao", row: configToRow(cfg, loja) });
+      }
+      continue;
+    }
+    let data = await obter(p.colecao, p.id) as Record<string, unknown> | undefined;
+    if (data) {
+      const corr = corrigirAutoriaLocalParaEnvio(data, uid, nome);
+      if (corr.alterou) {
+        data = corr.data;
+        cache.get(p.colecao)?.set(p.id, data);
+        await persistirAutoriaCorrigida(p.colecao, data);
+      }
+      if (!podeEnviarRegistro(data as { criadoPor?: string; atualizadoPor?: string }, ehDono)) {
         continue;
       }
-      let data = await obter(p.colecao, p.id) as Record<string, unknown> | undefined;
-      const ref = doc(db, "lojas", loja, p.colecao, p.id);
-      if (data) {
-        const corr = corrigirAutoriaLocalParaEnvio(data, uid, nome);
-        if (corr.alterou) {
-          data = corr.data;
-          cache.get(p.colecao)?.set(p.id, data);
-          await persistirAutoriaCorrigida(p.colecao, data);
-        }
-        if (!podeEnviarRegistro(data as { criadoPor?: string; atualizadoPor?: string }, ehDono)) {
-          continue;
-        }
-      }
-      if (p.acao === "delete" || data?.excluido) {
-        batch.set(ref, semUndefined({ ...(data ?? { id: p.id }), excluido: true, atualizado_em: new Date().toISOString() }), { merge: true });
-        enviados.push(p);
-      } else if (data) {
-        batch.set(ref, semUndefined(data), { merge: true });
-        enviados.push(p);
-      }
     }
-    if (!enviados.length) continue;
+    if (p.acao === "delete" || data?.excluido) {
+      lote.push(p);
+      loteRows.push({ colecao: p.colecao, row: rowDe(p.colecao, { ...(data ?? { id: p.id }), excluido: true, atualizado_em: new Date().toISOString() }, loja) });
+    } else if (data) {
+      lote.push(p);
+      loteRows.push({ colecao: p.colecao, row: rowDe(p.colecao, data, loja) });
+    }
+  }
+
+  const porTabela = new Map<string, { pend: typeof pendentes; rows: Record<string, unknown>[] }>();
+  for (let i = 0; i < lote.length; i++) {
+    const col = loteRows[i].colecao;
+    let g = porTabela.get(col);
+    if (!g) { g = { pend: [], rows: [] }; porTabela.set(col, g); }
+    g.pend.push(lote[i]);
+    g.rows.push(loteRows[i].row);
+  }
+
+  for (const [col, g] of porTabela) {
     try {
-      await batch.commit();
-      for (const p of enviados) await limparPendente(p.id);
-      enviadosTotal += enviados.length;
+      const conflict = col === "configuracao" ? "loja_id" : "loja_id,id";
+      await upsertLinhas(col, g.rows, conflict);
+      if (col === "produtos") {
+        for (const p of g.pend) {
+          const data = await obter(p.colecao, p.id) as Produto | undefined;
+          if (data) await gravarBarras(loja, data);
+        }
+      }
+      for (const p of g.pend) await limparPendente(p.id);
+      enviadosTotal += g.pend.length;
     } catch (e) {
-      const resumo = enviados.map((p) => `${p.colecao}/${p.id}`).join("; ");
+      const resumo = g.pend.map((p) => `${p.colecao}/${p.id}`).join("; ");
       console.error("envio pendentes lote", uid || "?", resumo, e);
       if (!isPermissionDenied(e)) throw new Error(mensagemErroSync(e, "enviar as alterações"));
-      // One denied item must not stall the rest of the queue.
-      for (const p of enviados) {
+      for (const p of g.pend) {
         const r = await gravarUm(p);
         if (r === "enviado") enviadosTotal += 1;
         else if (r === "recusado") {
@@ -481,7 +495,7 @@ export async function enviarPendentes(loja: string, ehDono: boolean): Promise<{ 
 
 export async function sincronizar(
   loja: string,
-  user: User,
+  user: NuvemUser,
   onProg?: (p: ProgressoSync) => void,
 ): Promise<EstadoEquipe & { retidosImportados: number; enviadosMerge: number }> {
   const estado = await garantirMembro(loja, user);
@@ -491,7 +505,6 @@ export async function sincronizar(
   await setMeta("ultimo_sync", new Date().toISOString());
   return { ...estado, retidosImportados: resultado.retidos, enviadosMerge: resultado.enviados };
 }
-
 
 export interface ResultadoMerge {
   enviados: number;
@@ -531,26 +544,36 @@ export async function mesclarLocalNaNuvem(
   const cobrancas = await listarCobrancas(10_000);
   const reab = await listarReabastecimentos();
   const cfg = await obterConfig();
-  const itens: Array<{ path: string[]; data: DocumentData }> = [];
+  const porCol = new Map<string, Record<string, unknown>[]>();
   let retidos = 0;
   const acum = <T extends { id: string; criadoPor?: string; atualizadoPor?: string }>(col: string, rows: T[]) => {
     for (const row of rows) {
       if (!podeEnviarRegistro(row, admin)) { retidos += 1; continue; }
-      itens.push({ path: ["lojas", loja, col, row.id], data: row });
+      const arr = porCol.get(col) ?? [];
+      arr.push(rowDe(col, row as unknown as Record<string, unknown>, loja));
+      porCol.set(col, arr);
     }
   };
-  if (cfg && admin) itens.push({ path: ["lojas", loja, "configuracao", "atual"], data: cfg });
+  if (cfg && admin) porCol.set("configuracao", [configToRow(cfg, loja)]);
   acum("vendas", vendas);
   acum("produtos", produtos);
   acum("entregas", entregas);
   acum("encomendas", encomendas);
   acum("cobrancas", cobrancas);
   acum("reabastecimentos", reab);
-  const total = itens.length;
+  const total = [...porCol.values()].reduce((a, r) => a + r.length, 0);
   onProg?.({ fase: "enviando", feito: 0, total });
-  for (let i = 0; i < itens.length; i += LOTE) {
-    await escreverLote(itens.slice(i, i + LOTE));
-    onProg?.({ fase: "enviando", feito: Math.min(i + LOTE, total), total });
+  let feito = 0;
+  for (const [col, rows] of porCol) {
+    const conflict = col === "configuracao" ? "loja_id" : "loja_id,id";
+    await upsertLinhas(col, rows, conflict);
+    if (col === "produtos") {
+      for (const p of produtos) {
+        if (podeEnviarRegistro(p, admin)) await gravarBarras(loja, p);
+      }
+    }
+    feito += rows.length;
+    onProg?.({ fase: "enviando", feito, total });
   }
   await setMeta("precisa_upload_inicial", false);
   await setMeta("nuvem_merge_feito", true);
@@ -558,7 +581,25 @@ export async function mesclarLocalNaNuvem(
   return { enviados: total, retidos, jaFeito: false };
 }
 
-const COLECOES_VIVO = ["vendas", "produtos", "entregas", "encomendas", "cobrancas", "reabastecimentos"] as const;
+export async function uploadInicial(
+  loja: string,
+  user: NuvemUser,
+  onProg?: (p: ProgressoSync) => void,
+): Promise<void> {
+  const estado = await estadoEquipeLocal();
+  const ehAdmin = Boolean(estado?.ehDono || estado?.ehLider);
+  await mesclarLocalNaNuvem(loja, ehAdmin, onProg);
+  void user;
+}
+
+function registroLocalDe(colecao: ColecaoDados, rec: Record<string, unknown>, loja: string): Record<string, unknown> {
+  if (colecao === "vendas") return vendaFromRow(rec) as unknown as Record<string, unknown>;
+  if (colecao === "produtos") return produtoFromRow(rec) as unknown as Record<string, unknown>;
+  if (colecao === "entregas") return entregaFromRow(rec) as unknown as Record<string, unknown>;
+  if (colecao === "encomendas") return encomendaFromRow(rec) as unknown as Record<string, unknown>;
+  if (colecao === "cobrancas") return cobrancaFromRow(rec) as unknown as Record<string, unknown>;
+  return reabastecimentoFromRow(rec) as unknown as Record<string, unknown>;
+}
 
 export function ouvirLoja(
   loja: string,
@@ -566,57 +607,69 @@ export function ouvirLoja(
   onErro?: (e: Error) => void,
   cursor?: string,
 ): () => void {
-  const { db } = getFirebase();
-  const uns = COLECOES_VIVO.map((col) => {
-    const base = collection(db, "lojas", loja, col);
-    // Without a cursor, skip the full-collection snapshot (it would download the entire history).
-    if (!cursor) return () => {};
-    const q = query(base, where("atualizado_em", ">", cursor), orderBy("atualizado_em"));
-    return onSnapshot(
-      q,
-      async (snap) => {
-        const aplicados: Array<{ id: string; excluido?: boolean; atualizado_em?: string }> = [];
-        for (const ch of snap.docChanges()) {
-          if (ch.type === "removed") continue;
-          const r = { id: ch.doc.id, ...ch.doc.data() } as { id: string; atualizado_em: string; excluido?: boolean };
-          let local: { atualizado_em: string } | undefined;
-          if (col === "vendas") local = await obterVenda(r.id);
-          else if (col === "produtos") local = await obterProduto(r.id);
-          else if (col === "entregas") local = await obterEntrega(r.id);
-          else if (col === "encomendas") local = await obterEncomenda(r.id);
-          else if (col === "cobrancas") local = await obterCobranca(r.id);
-          else if (col === "reabastecimentos") local = await obterReabastecimento(r.id);
-          if (!local || maisNovo(local.atualizado_em, r.atualizado_em) === "remoto") {
-            if (col === "vendas") await upsertVenda(r as Venda, false);
-            else if (col === "produtos") await upsertProduto(r as Produto, false);
-            else if (col === "entregas") await upsertEntrega(r as Entrega, false);
-            else if (col === "encomendas") await upsertEncomenda(r as Encomenda, false);
-            else if (col === "cobrancas") await upsertCobranca(r as Cobranca, false);
-            else if (col === "reabastecimentos") await upsertReabastecimento(r as Reabastecimento, false);
-            aplicados.push(r);
-          }
-        }
-        if (aplicados.length) aoMudar({ colecao: col, registros: aplicados });
-      },
-      (e) => onErro?.(e instanceof Error ? e : new Error(mensagemErroSync(e))),
-    );
+  const sb = getSupabase();
+  // Realtime does not send a full snapshot; listen even before a cursor exists.
+  const canais = TABELAS.map((col) => {
+    return sb
+      .channel(`loja:${loja}:${col}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: col, filter: `loja_id=eq.${loja}` },
+        (payload) => {
+          void (async () => {
+            try {
+              const rec = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
+              if (!rec || !rec.id) return;
+              const emRaw = rec.atualizado_em;
+              const em = typeof emRaw === "string" ? emRaw : (emRaw ? new Date(emRaw as string).toISOString() : undefined);
+              if (em && cursor && em <= cursor && payload.eventType !== "DELETE") return;
+              const local = await obterLocal(col, String(rec.id));
+              if (!local || maisNovo(local.atualizado_em, em) === "remoto" || payload.eventType === "DELETE") {
+                if (payload.eventType === "DELETE") {
+                  const marked = { ...rec, excluido: true, atualizado_em: em || new Date().toISOString() };
+                  await aplicarRemoto(col, marked, loja);
+                  aoMudar({ colecao: col, registros: [registroLocalDe(col, marked, loja) as { id: string; excluido?: boolean; atualizado_em?: string }] });
+                } else {
+                  await aplicarRemoto(col, rec, loja);
+                  aoMudar({ colecao: col, registros: [registroLocalDe(col, rec, loja) as { id: string; excluido?: boolean; atualizado_em?: string }] });
+                }
+              }
+            } catch (e) {
+              onErro?.(e instanceof Error ? e : new Error(mensagemErroSync(e)));
+            }
+          })();
+        },
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR") onErro?.(new Error(mensagemErroSync(new Error("canal"), "ouvir as alterações da loja")));
+      });
   });
-  const unCfg = onSnapshot(doc(db, "lojas", loja, "configuracao", "atual"), async (snap) => {
-    if (!snap.exists()) return;
-    const remoto = snap.data();
-    const local = await obterConfig();
-    const eq = await estadoEquipeLocal();
-    const forcarRemoto = eq && !eq.ehDono && !eq.ehLider;
-    if (forcarRemoto || maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
-      await salvarConfig(remoto as never, false);
-      aoMudar();
-    }
-  }, () => { /* config pode falhar se ainda não for membro */ });
-  return () => { uns.forEach((u) => u()); unCfg(); };
+  const canalCfg = sb
+    .channel(`loja:${loja}:configuracao`)
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "configuracao", filter: `loja_id=eq.${loja}` },
+      (payload) => {
+        void (async () => {
+          const rec = payload.new as Record<string, unknown> | null;
+          if (!rec) return;
+          const remoto = configFromRow(rec);
+          const local = await obterConfig();
+          const eq = await estadoEquipeLocal();
+          const forcarRemoto = eq && !eq.ehDono && !eq.ehLider;
+          if (forcarRemoto || maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
+            await salvarConfig(remoto, false);
+            aoMudar();
+          }
+        })();
+      },
+    )
+    .subscribe();
+  return () => {
+    for (const c of canais) void sb.removeChannel(c);
+    void sb.removeChannel(canalCfg);
+  };
 }
 
 void registroImportado;
-
-void query;
-void where;
-void limit;
+void listarAtividades;

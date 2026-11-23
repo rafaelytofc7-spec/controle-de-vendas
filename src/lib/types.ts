@@ -202,6 +202,12 @@ export interface FirebaseWebConfig {
   googleClientId?: string;
 }
 
+export interface SupabaseWebConfig {
+  url: string;
+  anonKey: string;
+  googleClientId?: string;
+}
+
 export interface BackupArquivo {
   formato: "controle-de-vendas-backup";
   versao: number;

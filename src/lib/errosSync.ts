@@ -2,10 +2,17 @@ export function isPermissionDenied(e: unknown): boolean {
   const code = typeof e === "object" && e && e !== null && "code" in e ? String((e as { code?: string }).code) : "";
   const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
   return code === "permission-denied"
+    || code === "42501"
+    || code === "PGRST301"
+    || code === "PGRST301"
     || code.endsWith("/permission-denied")
     || msg.includes("permission-denied")
     || msg.includes("permission_denied")
-    || msg.includes("missing or insufficient");
+    || msg.includes("missing or insufficient")
+    || msg.includes("row-level security")
+    || msg.includes("42501")
+    || msg.includes("not authorized")
+    || msg.includes("jwt expired");
 }
 
 export function rotuloOperacao(colecao: string, id?: string): string {

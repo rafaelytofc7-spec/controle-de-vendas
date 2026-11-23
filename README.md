@@ -12,7 +12,7 @@ Aplicativo de caixa, cardápio, entregas e livro de vendas. Funciona no celular 
 - Cada venda mostra quem registrou (ou “importado”, no histórico antigo). Dá para filtrar e ver o total por pessoa no dia e no mês.
 - Tela Equipe, com quem está online (último acesso nos últimos 2 minutos) e quando cada pessoa foi vista.
 - Relatórios mensais em **Mais → Relatórios** (fora da barra principal).
-- Dados no aparelho (IndexedDB). Quando houver internet e você estiver autenticado, a sincronização é nos dois sentidos com o Cloud Firestore.
+- Dados no aparelho (IndexedDB). Quando houver internet e você estiver autenticado, a sincronização é nos dois sentidos com a nuvem (Supabase).
 - Backup por arquivo JSON e, se você configurar o Google, o botão “Salvar no Google Drive”.
 - O nome da loja se configura em **Mais → Ajustes**.
 - Leitor de código de barras na venda e no cardápio (pela câmera), para produtos vendidos por unidade — não por quilo. Um produto pode ter vários códigos, sem repetir.
@@ -38,23 +38,21 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 ## Ligar a nuvem
 
-A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Na primeira abertura o aplicativo pede só o nome (é preciso ter internet nesta primeira vez). O primeiro aparelho de uma loja nova vira o Admin; os outros entram com o próprio nome. O Admin atual da loja já existente é preservado. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o código de recuperação, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail nem PIN compartilhado.
+A nuvem já vem configurada (projeto Supabase `controle-de-vendas`, região São Paulo). Na primeira abertura o aplicativo pede só o nome (é preciso ter internet nesta primeira vez). Se a loja já existe, quem entra vira membro. O Admin reivindica o papel com o código de recuperação e o próprio nome. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o código de recuperação, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail nem PIN compartilhado.
 
-O acesso anônimo e as regras desta versão precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.8.0 deixa qualquer usuário autenticado criar o próprio documento em membros e entrar só com o nome; o liderUid, o bloqueio e a importação de legados continuam só com o Admin. **Publique o arquivo `rules/firestore.rules` no Console** (esta publicação não é feita pelo aplicativo). Sem isso, a 1.8.0 não inclui um usuário novo. A 1.7.2 continua funcionando com essas regras (ainda entra com PIN, e o ingresso antigo segue válido).
-
-O detalhe está no aplicativo, em **Mais → Ajustes → Guia**, e no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Se quiser outro projeto Firebase, a tela Nuvem ainda aceita colar uma configuração alternativa.
+O login anônimo precisa estar ligado no painel do Supabase (Authentication → Providers → Anonymous). O passo a passo está em [GUIA-FIREBASE.md](GUIA-FIREBASE.md) e no aplicativo, em **Mais → Ajustes → Guia**.
 
 ## Aplicativo Android
 
-O APK de cada versão fica em [Releases](https://github.com/rafaelytofc7-spec/controle-de-vendas/releases). No Firebase, inclua `localhost` nos domínios autorizados e ligue o acesso anônimo. No Android, entre com o nome. Importe o backup pelo seletor de arquivos do aparelho; o histórico da loja **não** vem embutido no APK.
+O APK de cada versão fica em [Releases](https://github.com/rafaelytofc7-spec/controle-de-vendas/releases). No Android, entre com o nome. O histórico oficial já está na nuvem e desce depois da entrada; você também pode importar um backup pelo seletor de arquivos do aparelho. O histórico da loja **não** vem embutido no APK.
 
 ## Testes
 
 ```bash
 npm test          # matemática, promoções, importação, nomes
-npm run test:rules  # regras do Firestore (emulador)
 npm run build
-npm run test:e2e  # precisa do backup privado no caminho local de desenvolvimento
+npm run test:e2e  # fluxos locais (calculadora, leitor, relatórios)
+npm run test:e2e:nuvem  # dois aparelhos contra o projeto real, em uma loja de teste
 ```
 
 ## Telas

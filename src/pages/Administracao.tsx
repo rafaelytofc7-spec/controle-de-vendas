@@ -3,7 +3,7 @@ import { ListaVirtual } from "../components/ListaVirtual";
 import { useStore } from "../store";
 import { bloquearMembro, removerMembro } from "../lib/sync";
 import { alterarNomeMembro, renovarCodigoRecuperacao, transferirLideranca } from "../lib/acesso";
-import { LOJA_NUVEM_ID } from "../lib/firebasePadrao";
+import { LOJA_NUVEM_ID } from "../lib/supabasePadrao";
 import { formatarDataHora } from "../lib/datas";
 import { formatarReais } from "../lib/dinheiro";
 import { rotuloAutor } from "../lib/autoria";

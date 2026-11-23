@@ -8,6 +8,7 @@ import type {
   Encomenda,
   Entrega,
   FirebaseWebConfig,
+  SupabaseWebConfig,
   MembroLoja,
   Produto,
   Reabastecimento,
@@ -412,6 +413,19 @@ export async function getFirebaseConfig(): Promise<FirebaseWebConfig | undefined
 
 export async function setFirebaseConfig(cfg: FirebaseWebConfig): Promise<void> {
   await setMeta("firebase_config", cfg);
+}
+
+export async function getSupabaseConfig(): Promise<SupabaseWebConfig | undefined> {
+  return getMeta<SupabaseWebConfig>("supabase_config");
+}
+
+export async function setSupabaseConfig(cfg: SupabaseWebConfig): Promise<void> {
+  await setMeta("supabase_config", cfg);
+}
+
+export async function limparSupabaseConfig(): Promise<void> {
+  const d = await db();
+  await d.delete("meta", "supabase_config");
 }
 
 export async function limparFirebaseConfig(): Promise<void> {

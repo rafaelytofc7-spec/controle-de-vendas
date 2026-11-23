@@ -1,24 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { configEfetiva, configValida } from "../../src/lib/firebase";
-import { FIREBASE_CONFIG_PADRAO, mesmaConfig } from "../../src/lib/firebasePadrao";
+import { configEfetiva, configValida } from "../../src/lib/supabase";
+import { SUPABASE_CONFIG_PADRAO, mesmaConfig, LOJA_NUVEM_ID } from "../../src/lib/supabasePadrao";
 
 describe("configuração padrão da nuvem", () => {
   it("é uma config web válida e é usada quando não há substituição", () => {
-    expect(configValida(FIREBASE_CONFIG_PADRAO)).toBe(true);
-    expect(FIREBASE_CONFIG_PADRAO.projectId).toBe("controle-de-vendas-bddb9");
-    expect(configEfetiva(undefined)).toEqual(FIREBASE_CONFIG_PADRAO);
-    expect(configEfetiva(null)).toEqual(FIREBASE_CONFIG_PADRAO);
-    expect(configEfetiva({ apiKey: "", authDomain: "", projectId: "", appId: "" })).toEqual(FIREBASE_CONFIG_PADRAO);
+    expect(configValida(SUPABASE_CONFIG_PADRAO)).toBe(true);
+    expect(SUPABASE_CONFIG_PADRAO.url).toContain("zmsertdphnhaontkojqa");
+    expect(SUPABASE_CONFIG_PADRAO.anonKey.length).toBeGreaterThan(20);
+    expect(configEfetiva(undefined)).toEqual(SUPABASE_CONFIG_PADRAO);
+    expect(configEfetiva(null)).toEqual(SUPABASE_CONFIG_PADRAO);
+    expect(configEfetiva({ url: "", anonKey: "" })).toEqual(SUPABASE_CONFIG_PADRAO);
   });
 
   it("respeita uma substituição válida", () => {
     const outra = {
-      apiKey: "teste",
-      authDomain: "exemplo.firebaseapp.com",
-      projectId: "outro-projeto",
-      appId: "1:1:web:abc",
+      url: "https://exemplo.supabase.co",
+      anonKey: "teste-anon-key-com-tamanho-ok",
     };
     expect(configEfetiva(outra)).toEqual(outra);
-    expect(mesmaConfig(configEfetiva(undefined), FIREBASE_CONFIG_PADRAO)).toBe(true);
+    expect(mesmaConfig(configEfetiva(undefined), SUPABASE_CONFIG_PADRAO)).toBe(true);
+  });
+
+  it("usa a loja principal por padrão", () => {
+    expect(LOJA_NUVEM_ID).toBe("principal");
   });
 });

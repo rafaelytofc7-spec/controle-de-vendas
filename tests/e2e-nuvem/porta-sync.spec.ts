@@ -86,6 +86,19 @@ test("a porta pede só o nome e a venda aparece no outro aparelho", async ({ bro
   await expect(a.getByTestId("status-nuvem")).not.toHaveAttribute("data-status", "erro", { timeout: 20_000 });
   await expect(b.getByText("8,00").first()).toBeVisible({ timeout: 15_000 });
 
+  // Toque rápido: cinco cliques não podem gravar cinco vendas.
+  await a.locator(".calc-grid .btn", { hasText: /^1$/ }).click();
+  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await a.getByTestId("registrar-venda").evaluate((btn) => {
+    for (let i = 0; i < 5; i++) (btn as HTMLButtonElement).click();
+  });
+  await expect(a.getByTestId("confirmacao-venda")).toBeVisible();
+  await expect(a.getByTestId("total-hoje")).toContainText("30,00");
+  await expect(a.getByTestId("total-hoje")).not.toContainText("70,00");
+  await expect(b.getByTestId("total-hoje")).toContainText("30,00", { timeout: 15_000 });
+
   await a.getByRole("link", { name: "Mais" }).click();
   await a.locator('a[href$="/equipe"]').click();
   await expect(a.getByTestId("lista-equipe")).toContainText("Rafael");

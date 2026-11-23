@@ -1,5 +1,6 @@
-import type { User } from "firebase/auth";
 import type { AcaoAtividade, Atividade, Autoria } from "./types";
+
+type User = { uid: string; displayName?: string | null; email?: string | null };
 import { AUTOR_IMPORTADO, AUTOR_LOCAL } from "./types";
 import { agoraIso } from "./datas";
 import { gerarId } from "./importacao";

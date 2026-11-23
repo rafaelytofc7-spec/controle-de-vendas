@@ -1,11 +1,10 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { User } from "firebase/auth";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { ouvirAuth, sairAuth, usuarioAtual, type NuvemUser } from "./lib/supabase";
 import {
   bancoTemDados,
   exportarDados,
-  getFirebaseConfig,
-  limparFirebaseConfig,
+  getSupabaseConfig,
+  limparSupabaseConfig,
   getMeta,
   importarDados,
   listarAtividades,
@@ -21,7 +20,7 @@ import {
   aoHaverPendente,
   salvarConfig,
   upsertAtividade,
-  setFirebaseConfig,
+  setSupabaseConfig,
   setMeta,
   upsertCobranca,
   upsertEncomenda,
@@ -33,14 +32,14 @@ import {
 import { agoraIso } from "./lib/datas";
 import { gerarId, montarBackup, normalizarBackup, parseBackup, verificarBackupOficial, type DadosNormalizados } from "./lib/importacao";
 import { NOME_LOJA_PADRAO } from "./lib/marca";
-import { PREFS_NOTIFICACAO_PADRAO, type EstadoEquipe, type Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FirebaseWebConfig, FormaCobranca, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
-import { configEfetiva, configValida, getFirebase, iniciarFirebase } from "./lib/firebase";
+import { PREFS_NOTIFICACAO_PADRAO, type EstadoEquipe, type Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FormaCobranca, SupabaseWebConfig, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
+import { configEfetiva, configValida, iniciarSupabase } from "./lib/supabase";
 import { enviarPendentes, estadoEquipeLocal, obterCursorSync, ouvirLoja, sincronizar, type MudancaNuvem, type ProgressoSync } from "./lib/sync";
 import { isPermissionDenied, mensagemErroSync, rotuloOperacao } from "./lib/errosSync";
 import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
 import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
 import { entrarComNome, isNaoEMembroError, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
-import { LOJA_NUVEM_ID } from "./lib/firebasePadrao";
+import { LOJA_NUVEM_ID } from "./lib/supabasePadrao";
 import { calcularReabastecimento } from "./lib/reabastecimento";
 import { acrescentarVendaAgregados, agregarVendas, type AgregadosVendas } from "./lib/agregados";
 import { autoriaAtualizacao, autoriaNova, montarAtividade } from "./lib/autoria";
@@ -86,11 +85,11 @@ interface Store {
   confirmarCobranca: (id: string) => Promise<void>;
   cancelarCobranca: (id: string) => Promise<void>;
   atualizarConfig: (c: Partial<ConfiguracaoLoja>) => Promise<void>;
-  firebaseCfg?: FirebaseWebConfig;
-  salvarFirebase: (c: FirebaseWebConfig) => Promise<void>;
+  firebaseCfg?: SupabaseWebConfig;
+  salvarFirebase: (c: SupabaseWebConfig) => Promise<void>;
   limparFirebase: () => Promise<void>;
   firebaseOverride: boolean;
-  usuario: User | null;
+  usuario: NuvemUser | null;
   online: boolean;
   syncando: boolean;
   progressoSync?: ProgressoSync;
@@ -139,9 +138,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [encomendas, setEncomendas] = useState<Encomenda[]>([]);
   const [cobrancas, setCobrancas] = useState<Cobranca[]>([]);
   const [reabastecimentos, setReabastecimentos] = useState<Reabastecimento[]>([]);
-  const [firebaseCfg, setFirebaseCfg] = useState<FirebaseWebConfig>();
+  const [firebaseCfg, setFirebaseCfg] = useState<SupabaseWebConfig>();
   const [firebaseOverride, setFirebaseOverride] = useState(false);
-  const [usuario, setUsuario] = useState<User | null>(null);
+  const [usuario, setUsuario] = useState<NuvemUser | null>(null);
   const [online, setOnline] = useState(typeof navigator === "undefined" ? true : navigator.onLine);
   const [syncando, setSyncando] = useState(false);
   const [progressoSync, setProgressoSync] = useState<ProgressoSync>();
@@ -162,11 +161,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const recarregar = useCallback(async () => {
     const tem = await bancoTemDados();
     setTemDados(tem);
-    const salva = await getFirebaseConfig();
+    const salva = await getSupabaseConfig();
     const cfgFb = configEfetiva(salva);
-    setFirebaseOverride(configValida(salva));
+    setFirebaseOverride(configValida(salva) && Boolean(salva));
     setFirebaseCfg(cfgFb);
-    try { iniciarFirebase(cfgFb); } catch { /* ignore */ }
+    try { iniciarSupabase(cfgFb); } catch { /* ignore */ }
     const [eqPre, codigoPre] = await Promise.all([
       estadoEquipeLocal(), getMeta<string>("codigo_recuperacao"),
     ]);
@@ -215,8 +214,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!firebaseCfg || !configValida(firebaseCfg)) return;
     try {
-      const { auth } = iniciarFirebase(firebaseCfg);
-      return onAuthStateChanged(auth, setUsuario);
+      iniciarSupabase(firebaseCfg);
+      return ouvirAuth(setUsuario);
     } catch { return; }
   }, [firebaseCfg]);
 
@@ -241,7 +240,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const usuarioDaSessao = () => {
     if (usuario) return usuario;
-    try { return getFirebase().auth.currentUser; } catch { return null; }
+    return null;
   };
 
   const registrarVenda = useCallback(async (valor: number, idPrevio?: string) => {
@@ -523,19 +522,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (c.loja) setLoja(c.loja);
   }, [config, loja]);
 
-  const salvarFirebase = useCallback(async (c: FirebaseWebConfig) => {
-    await setFirebaseConfig(c);
+  const salvarFirebase = useCallback(async (c: SupabaseWebConfig) => {
+    await setSupabaseConfig(c);
     setFirebaseOverride(true);
     setFirebaseCfg(c);
-    if (configValida(c)) iniciarFirebase(c);
+    if (configValida(c)) iniciarSupabase(c);
   }, []);
 
   const limparFirebase = useCallback(async () => {
-    await limparFirebaseConfig();
+    await limparSupabaseConfig();
     const cfg = configEfetiva(undefined);
     setFirebaseOverride(false);
     setFirebaseCfg(cfg);
-    try { iniciarFirebase(cfg); } catch { /* ignore */ }
+    try { iniciarSupabase(cfg); } catch { /* ignore */ }
   }, []);
 
   const nomeReingresso = (equipe?.meuNome || usuario?.displayName || "").trim();
@@ -570,13 +569,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const entrarNaNuvem = useCallback(async (nome: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
-    const { auth } = iniciarFirebase(firebaseCfg);
+    iniciarSupabase(firebaseCfg);
     const estadoPin = await entrarComNome(nome);
     setEquipe(estadoPin);
     setEhDono(Boolean(estadoPin.ehLider));
     setBloqueado(Boolean(estadoPin.bloqueado));
     if (estadoPin.codigoRecuperacao) setCodigoRecuperacao(estadoPin.codigoRecuperacao);
-    const user = auth.currentUser;
+    const user = await usuarioAtual();
     if (user) setUsuario(user);
     setPrecisaReentrarPin(false);
     let retidosImportados = 0;
@@ -614,13 +613,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const recuperarLider = useCallback(async (nome: string, codigo: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
-    const { auth } = iniciarFirebase(firebaseCfg);
+    iniciarSupabase(firebaseCfg);
     const estadoRec = await recuperarLideranca(nome, codigo);
     setEquipe(estadoRec);
     setEhDono(true);
     setBloqueado(false);
     setCodigoRecuperacao(codigo.trim().toUpperCase());
-    const user = auth.currentUser;
+    const user = await usuarioAtual();
     if (user) setUsuario(user);
     if (user && navigator.onLine) {
       setSyncando(true);
@@ -684,7 +683,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const sairDaNuvem = useCallback(async () => {
     if (firebaseCfg && configValida(firebaseCfg)) {
-      try { await signOut(iniciarFirebase(firebaseCfg).auth); } catch { /* ignore */ }
+      try { await sairAuth(); } catch { /* ignore */ }
     }
     await setMeta("equipe", null);
     setEquipe(undefined);
@@ -706,7 +705,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       try {
         let user = usuario;
         if (!user) {
-          try { user = getFirebase().auth.currentUser; } catch { user = null; }
+          try { user = await usuarioAtual(); } catch { user = null; }
         }
         if (!user) return;
         try {
