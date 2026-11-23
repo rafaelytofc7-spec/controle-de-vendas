@@ -37,7 +37,7 @@ const TITULOS: Record<string, { t: string; s: string }> = {
 };
 
 function Shell() {
-  const { pronto, temDados, config, bloqueado, equipe, statusNuvem, avisoImportados, erroSync } = useStore();
+  const { pronto, temDados, config, bloqueado, equipe, statusNuvem, avisoImportados, erroSync, pendentesCount, precisaReentrarPin } = useStore();
   const loc = useLocation();
   const meta = loc.pathname.startsWith("/relatorios/")
     ? { t: "Relatório do mês", s: "Totais por dia" }
@@ -58,7 +58,15 @@ function Shell() {
   }, []);
 
   const entrou = Boolean(equipe?.liderUid);
-  const rotuloStatus = statusNuvem === "offline" ? "Offline" : statusNuvem === "sincronizando" ? "Sincronizando…" : "Sincronizado";
+  const rotuloStatus = statusNuvem === "offline"
+    ? "Offline"
+    : statusNuvem === "sincronizando"
+      ? "Sincronizando…"
+      : statusNuvem === "erro"
+        ? "Erro na sincronização"
+        : statusNuvem === "pendente"
+          ? (pendentesCount === 1 ? "A enviar (1)" : `A enviar (${pendentesCount})`)
+          : "Sincronizado";
 
   if (!pronto) {
     return (
@@ -79,7 +87,7 @@ function Shell() {
       </div>
     );
   }
-  if (!entrou) return <EntradaNuvem />;
+  if (!entrou || precisaReentrarPin) return <EntradaNuvem />;
   if (!temDados) return <PrimeiraExecucao />;
 
   return (
@@ -102,6 +110,9 @@ function Shell() {
           {erroSync && <div className="small" data-testid="erro-sync" style={{ textAlign: "right", color: "var(--tomate-2)" }}>{erroSync}</div>}
           <div className="small status-nuvem" data-testid="status-nuvem" data-status={statusNuvem}>
             {rotuloStatus}
+            {pendentesCount > 0 && statusNuvem !== "pendente" && (
+              <div data-testid="pendentes-sync">Pendentes: {pendentesCount}</div>
+            )}
             <div>v{APP_VERSION}</div>
           </div>
         </div>

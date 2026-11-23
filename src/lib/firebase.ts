@@ -1,6 +1,6 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
-import { connectFirestoreEmulator, getFirestore, type Firestore } from "firebase/firestore";
+import { connectFirestoreEmulator, getFirestore, initializeFirestore, memoryLocalCache, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
 import type { FirebaseWebConfig } from "./types";
 import { FIREBASE_CONFIG_PADRAO } from "./firebasePadrao";
 
@@ -37,7 +37,15 @@ export function iniciarFirebase(cfg: FirebaseWebConfig): { app: FirebaseApp; aut
   }
   app = getApps().length ? getApps()[0] : initializeApp(cfg);
   auth = getAuth(app);
-  dbFs = getFirestore(app);
+  try {
+    dbFs = initializeFirestore(app, {
+      localCache: usarEmuladorFirebase()
+        ? memoryLocalCache()
+        : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    dbFs = getFirestore(app);
+  }
   lastKey = key;
   if (usarEmuladorFirebase() && !emuladorLigado) {
     const authPort = Number(import.meta.env.VITE_AUTH_EMULATOR_PORT) || 9099;

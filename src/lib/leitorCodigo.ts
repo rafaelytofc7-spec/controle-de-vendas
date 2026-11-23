@@ -1,4 +1,5 @@
 import { ehNativo } from "./plataforma";
+import { logLeitor } from "./diagnosticoLeitor";
 
 /** String values of BarcodeFormat — keep this module free of a static plugin import. */
 const FORMATOS_NATIVOS = [
@@ -14,7 +15,9 @@ const FORMATOS_NATIVOS = [
   "dataMatrix",
 ] as const;
 
-const START_SCAN_MS = 8_000;
+/** Only waits for the camera to start, never cuts a scan already running. */
+const START_SCAN_MS = 20_000;
+const WEB_CAMERA_MS = 12_000;
 
 export async function lerCodigoBarras(): Promise<string | null> {
   return new Promise((resolve) => {
@@ -33,6 +36,7 @@ export async function lerCodigoBarras(): Promise<string | null> {
       stream?.getTracks().forEach((t) => t.stop());
       void pararNativo(nativoAtivo);
       ui.remover();
+      logLeitor("info", valor ? "código lido" : "leitura cancelada", valor ? "ok" : undefined);
       resolve(valor);
     };
 
@@ -41,6 +45,7 @@ export async function lerCodigoBarras(): Promise<string | null> {
     ui.onAjustes(() => { void abrirAjustes(); });
 
     void (async () => {
+      logLeitor("info", ehNativo() ? "iniciando leitor nativo" : "iniciando leitor web");
       if (ehNativo()) {
         const r = await iniciarNativo(ui, (v) => sair(v), () => {
           nativoAtivo = true;
@@ -48,9 +53,11 @@ export async function lerCodigoBarras(): Promise<string | null> {
         if (r === "ok") return;
         nativoAtivo = false;
         if (r === "denied") {
-          ui.mostrarPermissaoNegada(true);
+          ui.mostrarErro("A câmera não foi autorizada. Autorize nas configurações do aparelho ou digite o código.", true);
+          logLeitor("erro", "permissão da câmera negada");
           return;
         }
+        logLeitor("info", "nativo indisponível, tentando câmera do navegador", r);
       }
       const web = await iniciarWeb(ui, (v) => sair(v));
       stream = web.stream;
@@ -70,6 +77,7 @@ type Overlay = {
   onAjustes: (fn: () => void) => void;
   setStatus: (t: string) => void;
   modoNativo: (on: boolean) => void;
+  mostrarErro: (t: string, nativo?: boolean) => void;
   mostrarPermissaoNegada: (nativo: boolean) => void;
   remover: () => void;
 };
@@ -92,6 +100,7 @@ function montarOverlay(): Overlay {
         </div>
       </div>
       <p class="leitor-status">Abrindo a câmera…</p>
+      <p class="leitor-erro" data-testid="leitor-erro" hidden></p>
       <button type="button" class="btn btn-leitor-ajustes" data-acao="ajustes" hidden>Abrir configurações</button>
       <label class="field leitor-digitar">Digitar o código
         <input class="input" data-testid="leitor-digitado" inputmode="numeric" autocomplete="off" />
@@ -105,8 +114,18 @@ function montarOverlay(): Overlay {
   document.body.appendChild(raiz);
   const video = raiz.querySelector("video") as HTMLVideoElement;
   const status = raiz.querySelector(".leitor-status") as HTMLElement;
+  const erroEl = raiz.querySelector(".leitor-erro") as HTMLElement;
   const input = raiz.querySelector('[data-testid="leitor-digitado"]') as HTMLInputElement;
   const btnAjustes = raiz.querySelector('[data-acao="ajustes"]') as HTMLButtonElement;
+
+  const mostrarErro = (t: string, nativo = false) => {
+    status.textContent = t;
+    erroEl.hidden = false;
+    erroEl.textContent = t;
+    if (nativo) btnAjustes.hidden = false;
+    input.focus();
+  };
+
   return {
     raiz,
     video,
@@ -131,14 +150,15 @@ function montarOverlay(): Overlay {
     modoNativo: (on) => {
       raiz.classList.toggle("leitor-modo-nativo", on);
       document.documentElement.classList.toggle("leitor-nativo-ativo", on);
+      document.body.classList.toggle("leitor-nativo-ativo", on);
     },
+    mostrarErro,
     mostrarPermissaoNegada: (nativo) => {
-      status.textContent = "A câmera não foi autorizada. Autorize nas configurações do aparelho ou digite o código.";
-      if (nativo) btnAjustes.hidden = false;
-      input.focus();
+      mostrarErro("A câmera não foi autorizada. Autorize nas configurações do aparelho ou digite o código.", nativo);
     },
     remover: () => {
       document.documentElement.classList.remove("leitor-nativo-ativo");
+      document.body.classList.remove("leitor-nativo-ativo");
       raiz.remove();
     },
   };
@@ -146,6 +166,7 @@ function montarOverlay(): Overlay {
 
 type PluginScan = {
   requestPermissions: () => Promise<{ camera?: string }>;
+  checkPermissions?: () => Promise<{ camera?: string }>;
   isSupported?: () => Promise<{ supported?: boolean }>;
   startScan: (opts?: { formats?: readonly string[]; lensFacing?: string }) => Promise<void>;
   stopScan: () => Promise<void>;
@@ -161,6 +182,7 @@ async function carregarPlugin(): Promise<PluginScan> {
 
 async function pararNativo(estavaAtivo: boolean): Promise<void> {
   document.documentElement.classList.remove("leitor-nativo-ativo");
+  document.body.classList.remove("leitor-nativo-ativo");
   if (!ehNativo() && !estavaAtivo) return;
   try {
     const scanner = await carregarPlugin();
@@ -175,8 +197,9 @@ async function abrirAjustes(): Promise<void> {
   try {
     const scanner = await carregarPlugin();
     await scanner.openSettings?.();
-  } catch {
-    /* ignore */
+    logLeitor("info", "abriu configurações do aparelho");
+  } catch (e) {
+    logLeitor("erro", "não abriu as configurações", e instanceof Error ? e.message : e);
   }
 }
 
@@ -189,33 +212,55 @@ async function iniciarNativo(
     const scanner = await carregarPlugin();
     try {
       const sup = await scanner.isSupported?.();
+      logLeitor("info", "plugin suportado", sup);
       if (sup && sup.supported === false) return "fallback";
-    } catch {
-      /* continue */
+    } catch (e) {
+      logLeitor("erro", "isSupported falhou", e instanceof Error ? e.message : e);
     }
-    const perm = await scanner.requestPermissions();
-    if (perm.camera !== "granted" && perm.camera !== "limited") {
+    let perm = await scanner.checkPermissions?.().catch(() => undefined);
+    if (perm?.camera !== "granted" && perm?.camera !== "limited") {
+      perm = await scanner.requestPermissions();
+    }
+    logLeitor("info", "permissão da câmera", perm);
+    if (perm?.camera !== "granted" && perm?.camera !== "limited") {
       return "denied";
     }
+    await scanner.removeAllListeners?.();
     await scanner.addListener("barcodeScanned", (ev) => {
       const v = ev.barcode?.rawValue?.trim();
-      if (v) onCodigo(v);
+      if (v) {
+        logLeitor("info", "código nativo lido");
+        onCodigo(v);
+      }
     });
     ui.modoNativo(true);
     marcarAtivo();
-    const inicio = scanner.startScan({ formats: FORMATOS_NATIVOS, lensFacing: "BACK" });
+    ui.setStatus("Aponte para o código…");
+    let iniciou = false;
+    const inicio = scanner.startScan({ formats: FORMATOS_NATIVOS, lensFacing: "BACK" }).then(() => {
+      iniciou = true;
+      return "ok" as const;
+    });
     const resultado = await Promise.race([
-      inicio.then(() => "ok" as const),
+      inicio,
       new Promise<"timeout">((r) => setTimeout(() => r("timeout"), START_SCAN_MS)),
     ]);
     if (resultado === "timeout") {
+      if (iniciou) {
+        // startScan resolved just after the timer; keep the camera running.
+        logLeitor("info", "câmera nativa atrasou, mas abriu");
+        return "ok";
+      }
+      logLeitor("erro", "startScan não abriu a tempo, indo para o fallback");
       ui.modoNativo(false);
       await pararNativo(true);
       return "fallback";
     }
+    logLeitor("info", "startScan iniciado (ML Kit embutido)");
     ui.setStatus("Aponte para o código…");
     return "ok";
-  } catch {
+  } catch (e) {
+    logLeitor("erro", "falha no leitor nativo", e instanceof Error ? e.message : e);
     ui.modoNativo(false);
     await pararNativo(true);
     return "fallback";
@@ -232,7 +277,8 @@ async function iniciarWeb(
   let timer = 0;
   try {
     if (!navigator.mediaDevices?.getUserMedia) {
-      ui.setStatus("Este aparelho não liberou a câmera. Digite o código abaixo.");
+      ui.mostrarErro("A câmera está indisponível neste aparelho. Digite o código abaixo.");
+      logLeitor("erro", "getUserMedia ausente");
       ui.input.focus();
       return { stream, detector, timer };
     }
@@ -241,7 +287,7 @@ async function iniciarWeb(
       audio: false,
     });
     const limite = new Promise<MediaStream>((_, rej) => {
-      window.setTimeout(() => rej(new Error("timeout")), 5000);
+      window.setTimeout(() => rej(new Error("timeout")), WEB_CAMERA_MS);
     });
     stream = await Promise.race([pedido, limite]);
     pedido.then((s) => {
@@ -250,6 +296,7 @@ async function iniciarWeb(
     ui.video.srcObject = stream;
     await ui.video.play();
     ui.setStatus("Aponte para o código…");
+    logLeitor("info", "câmera web aberta");
     const Nativo = (window as unknown as {
       BarcodeDetector?: new (opts: { formats: string[] }) => {
         detect: (s: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
@@ -278,10 +325,13 @@ async function iniciarWeb(
   } catch (e) {
     const nome = String((e as { name?: string })?.name ?? "");
     const msg = e instanceof Error ? e.message : "Não foi possível abrir a câmera.";
+    logLeitor("erro", "câmera web falhou", nome + " " + msg);
     if (/NotAllowedError|Permission|denied/i.test(nome + msg)) {
-      ui.setStatus("A câmera não foi autorizada. Autorize o acesso ou digite o código.");
+      ui.mostrarErro("A câmera não foi autorizada. Autorize o acesso ou digite o código.", ehNativo());
+    } else if (/timeout/i.test(msg)) {
+      ui.mostrarErro("A câmera demorou para abrir. Digite o código ou tente de novo.");
     } else {
-      ui.setStatus("Não foi possível abrir a câmera. Digite o código.");
+      ui.mostrarErro("A câmera está indisponível. Digite o código abaixo.");
     }
     ui.input.focus();
     return { stream, detector, timer };

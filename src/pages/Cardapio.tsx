@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTravaToque } from "../components/useTravaToque";
 import { useDebounce } from "../lib/debounce";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
@@ -15,6 +16,7 @@ import { mensagemCodigoBarras, podeAdicionarCodigo, produtoVendidoPorPeso } from
 export function Cardapio() {
   const { produtos, config, salvarProduto, excluirProduto } = useStore();
   const { confirmar, dialogo } = useConfirmar();
+  const trava = useTravaToque();
   const [busca, setBusca] = useState("");
   const buscaDeb = useDebounce(busca, 160);
   const [edit, setEdit] = useState<string | "novo" | null>(null);
@@ -51,6 +53,8 @@ export function Cardapio() {
 
   async function salvar() {
     if (!nome.trim() || !edit) return;
+    if (!trava.comecar()) return;
+    try {
     const id = edit === "novo" ? gerarId() : edit;
     const atual = produtos.find((p) => p.id === id);
     await salvarProduto({
@@ -63,6 +67,9 @@ export function Cardapio() {
       codigos_barras: produtoVendidoPorPeso(unidade) ? [] : codigos,
     });
     setEdit(null);
+    } finally {
+      trava.soltar();
+    }
   }
 
   const texto = textoCardapio(produtos, config);
@@ -163,7 +170,7 @@ export function Cardapio() {
                   if (ok && typeof edit === "string") { await excluirProduto(edit); setEdit(null); }
                 }}>Excluir</button>}
                 <button className="btn grow" onClick={() => setEdit(null)}>Cancelar</button>
-                <button className="btn btn-primary grow" onClick={() => void salvar()}>Salvar</button>
+                <button className="btn btn-primary grow" disabled={trava.ocupado} onClick={() => void salvar()}>Salvar</button>
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { writeFileSync } from "node:fs";
 
 const PIN = "2468";
 
@@ -48,16 +49,45 @@ test("a porta pede nome e PIN e a venda aparece no outro aparelho", async ({ bro
   await b.getByRole("button", { name: "2", exact: true }).click();
   await b.getByRole("button", { name: "0", exact: true }).click();
   await b.getByRole("button", { name: "0", exact: true }).click();
+  const tBA = Date.now();
   await b.getByTestId("registrar-venda").click();
   await expect(b.getByTestId("total-hoje")).toContainText("3,00", { timeout: 15_000 });
-  await b.waitForTimeout(1200);
   await a.bringToFront();
+  await expect(a.getByTestId("total-hoje")).toContainText("3,00", { timeout: 15_000 });
+  await expect(a.getByText("Ana").first()).toBeVisible({ timeout: 15_000 });
+  const latenciaBA = Date.now() - tBA;
+
+  await a.locator(".calc-grid .btn", { hasText: /^9$/ }).click();
+  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  const tAB = Date.now();
+  await a.getByTestId("registrar-venda").click();
+  await expect(a.getByTestId("confirmacao-venda")).toBeVisible();
+  await expect(b.getByText("9,00").first()).toBeVisible({ timeout: 15_000 });
+  const latenciaAB = Date.now() - tAB;
+  writeFileSync("/tmp/sync-latencia-ab.json", JSON.stringify({
+    latenciaABMs: latenciaAB,
+    latenciaBAMs: latenciaBA,
+    em: new Date().toISOString(),
+  }, null, 2));
+  expect(latenciaAB, `A→B ${latenciaAB}ms`).toBeLessThan(10_000);
+
+  await ctxA.setOffline(true);
+  await a.evaluate(() => window.dispatchEvent(new Event("offline")));
+  await a.locator(".calc-grid .btn", { hasText: /^8$/ }).click();
+  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await a.getByTestId("registrar-venda").click();
+  await expect(a.getByTestId("confirmacao-venda")).toBeVisible();
+  await expect(a.getByText("8,00").first()).toBeVisible();
+  await ctxA.setOffline(false);
   await a.evaluate(() => {
     window.dispatchEvent(new Event("online"));
     document.dispatchEvent(new Event("visibilitychange"));
   });
-  await expect(a.getByTestId("total-hoje")).toContainText("3,00", { timeout: 30_000 });
-  await expect(a.getByText("Ana").first()).toBeVisible({ timeout: 20_000 });
+  await expect(a.getByTestId("status-nuvem")).not.toHaveAttribute("data-status", "offline", { timeout: 15_000 });
+  await expect(a.getByTestId("status-nuvem")).not.toHaveAttribute("data-status", "erro", { timeout: 20_000 });
+  await expect(b.getByText("8,00").first()).toBeVisible({ timeout: 15_000 });
 
   await a.getByRole("link", { name: "Mais" }).click();
   await a.locator('a[href$="/equipe"]').click();

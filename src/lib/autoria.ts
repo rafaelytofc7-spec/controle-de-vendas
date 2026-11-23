@@ -39,6 +39,33 @@ export function podeEnviarRegistro(row: { criadoPor?: string; atualizadoPor?: st
   return ehAdmin || !registroImportado(row);
 }
 
+
+/** Rewrites authorship "local" to the signed-in uid so Firestore rules accept the write.
+ *  Never touches rows marked as imported (including the official history). */
+export function corrigirAutoriaLocalParaEnvio(
+  data: Record<string, unknown>,
+  uid: string,
+  nome: string,
+): { data: Record<string, unknown>; alterou: boolean } {
+  if (!uid) return { data, alterou: false };
+  const criado = String(data.criadoPor ?? "");
+  const atualizado = String(data.atualizadoPor ?? "");
+  if (criado === AUTOR_IMPORTADO || atualizado === AUTOR_IMPORTADO) return { data, alterou: false };
+  const criadoLocal = criado === AUTOR_LOCAL;
+  const atualizadoLocal = atualizado === AUTOR_LOCAL;
+  if (!criadoLocal && !atualizadoLocal) return { data, alterou: false };
+  return {
+    data: {
+      ...data,
+      criadoPor: criadoLocal ? uid : criado,
+      criadoPorEmail: data.criadoPorEmail || nome || data.criadoPorEmail,
+      atualizadoPor: atualizadoLocal || !atualizado ? uid : atualizado,
+      atualizadoPorEmail: nome || data.atualizadoPorEmail,
+    },
+    alterou: true,
+  };
+}
+
 export function rotuloAutor(criadoPor?: string, email?: string): string {
   if (email) return email;
   if (!criadoPor || criadoPor === "importado") return "Importado";

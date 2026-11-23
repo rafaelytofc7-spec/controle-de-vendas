@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ListaVirtual } from "../components/ListaVirtual";
 import { useStore } from "../store";
 import { bloquearMembro, removerMembro } from "../lib/sync";
@@ -7,6 +7,9 @@ import { LOJA_NUVEM_ID } from "../lib/firebasePadrao";
 import { formatarDataHora } from "../lib/datas";
 import { formatarReais } from "../lib/dinheiro";
 import { rotuloAutor } from "../lib/autoria";
+import { gruposDuplicatasSuspeitas } from "../lib/duplicatas";
+import { listarLogLeitor, limparLogLeitor, type EventoLeitor } from "../lib/diagnosticoLeitor";
+import { useConfirmar } from "../components/Dialogo";
 import { AUTOR_IMPORTADO } from "../lib/types";
 
 type Aba = "equipe" | "acesso" | "atividades" | "faturamento" | "loja";
@@ -14,8 +17,9 @@ type Aba = "equipe" | "acesso" | "atividades" | "faturamento" | "loja";
 export function Administracao() {
   const {
     ehDono, usuario, loja, online, membros, atividades, vendas, equipe,
-    config, atualizarConfig, recarregar, codigoRecuperacao,
+    config, atualizarConfig, recarregar, codigoRecuperacao, excluirVenda,
   } = useStore();
+  const { confirmar, dialogo } = useConfirmar();
   const [aba, setAba] = useState<Aba>("equipe");
   const [aviso, setAviso] = useState("");
   const [busy, setBusy] = useState(false);
@@ -31,6 +35,11 @@ export function Administracao() {
   const [alvoLider, setAlvoLider] = useState("");
   const [nomeEdit, setNomeEdit] = useState<Record<string, string>>({});
   const [horaLembrete, setHoraLembrete] = useState(config.hora_lembrete_padrao || "12:00");
+  const [logLeitor, setLogLeitor] = useState<EventoLeitor[]>([]);
+
+  useEffect(() => { setLogLeitor(listarLogLeitor()); }, [aba]);
+
+  const duplicatas = useMemo(() => gruposDuplicatasSuspeitas(vendas), [vendas]);
 
   const porPessoa = useMemo(() => {
     const map = new Map<string, { rotulo: string; quantidade: number; total: number }>();
@@ -128,6 +137,7 @@ export function Administracao() {
 
   return (
     <div>
+      {dialogo}
       <div className="tabs tabs-admin">
         <button className={aba === "equipe" ? "on" : ""} onClick={() => setAba("equipe")}>Equipe</button>
         <button className={aba === "acesso" ? "on" : ""} onClick={() => setAba("acesso")}>Acesso</button>
@@ -244,6 +254,35 @@ export function Administracao() {
         </div>
       )}
 
+      {aba === "faturamento" && (
+        <div className="card col" data-testid="possiveis-duplicadas">
+          <h3>Possíveis vendas duplicadas</h3>
+          <p className="muted small">Mesmo valor e mesmo autor, registradas com até 5 segundos de intervalo. Nada é apagado sozinho: confira e remova só se tiver certeza.</p>
+          {duplicatas.length === 0 ? <p className="muted">Nenhum grupo suspeito no momento.</p> : duplicatas.map((g, i) => (
+            <div key={`${g.autor}-${g.valor}-${i}`} className="lista" style={{ marginBottom: 12 }}>
+              <p><strong>{formatarReais(g.valor)}</strong> · {g.vendas.length} registros · {rotuloAutor(g.vendas[0].criadoPor, g.vendas[0].criadoPorEmail)}</p>
+              {g.vendas.map((v) => (
+                <div key={v.id} className="item">
+                  <div className="grow">
+                    <div className="muted small">{formatarDataHora(v.criado_em)} · {v.id.slice(0, 8)}</div>
+                  </div>
+                  <button className="btn btn-sm" data-testid={`apagar-duplicata-${v.id}`} onClick={() => void (async () => {
+                    const ok = await confirmar({
+                      titulo: "Apagar esta venda?",
+                      descricao: `A venda de ${formatarReais(v.valor)} será removida do livro caixa. Isso não se desfaz.`,
+                      confirmar: "Apagar",
+                      destrutivo: true,
+                    });
+                    if (!ok) return;
+                    await excluirVenda(v.id);
+                  })()}>Apagar</button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
       {aba === "loja" && (
         <div className="card">
           <h3>Configurações da loja</h3>
@@ -260,6 +299,24 @@ export function Administracao() {
           <button className="btn btn-primary" onClick={() => void salvarLoja()}>Salvar</button>
         </div>
       )}
+
+      <div className="card col" data-testid="diagnostico-leitor" style={{ marginTop: 16 }}>
+        <h3>Diagnóstico do leitor</h3>
+        <p className="muted small">Registro deste aparelho sobre a câmera e o leitor de código. Útil se o código de barras não abrir.</p>
+        <div className="row wrap">
+          <button type="button" className="btn" onClick={() => setLogLeitor(listarLogLeitor())}>Atualizar</button>
+          <button type="button" className="btn" onClick={() => { limparLogLeitor(); setLogLeitor([]); }}>Limpar log</button>
+        </div>
+        {logLeitor.length === 0 ? <p className="muted">Ainda não há eventos.</p> : (
+          <ul className="log-leitor">
+            {logLeitor.map((ev, i) => (
+              <li key={ev.em + String(i)} className={ev.nivel === "erro" ? "erro" : undefined}>
+                {formatarDataHora(ev.em)} · {ev.msg}{ev.detalhe ? ` — ${ev.detalhe}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

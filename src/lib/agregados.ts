@@ -1,4 +1,4 @@
-import { somarValores, ticketMedio } from "./dinheiro";
+import { somarValores, ticketMedio, paraCentavos, deCentavos } from "./dinheiro";
 import { chaveSemanaDeParts, zonedParts } from "./datas";
 import type { Venda } from "./types";
 import type { ResumoPeriodo } from "./faturamento";
@@ -67,3 +67,34 @@ export function agregarVendas(vendas: Venda[]): AgregadosVendas {
 export function resumoOuVazio(m: Map<string, ResumoPeriodo>, chave: string): ResumoPeriodo {
   return m.get(chave) ?? RESUMO_VAZIO;
 }
+
+export function acrescentarVendaAgregados(ag: AgregadosVendas, v: Venda): AgregadosVendas {
+  if (v.excluido) return ag;
+  const p = zonedParts(v.criado_em);
+  const semana = chaveSemanaDeParts(p);
+  const mes = `${p.year}-${String(p.month).padStart(2, "0")}`;
+
+  const bump = (m: Map<string, ResumoPeriodo>, k: string): Map<string, ResumoPeriodo> => {
+    const next = new Map(m);
+    const r = next.get(k) ?? RESUMO_VAZIO;
+    const quantidade = r.quantidade + 1;
+    const total = somarValores([r.total, v.valor]);
+    next.set(k, { quantidade, total, ticketMedio: quantidade ? deCentavos(paraCentavos(total) / BigInt(quantidade)) : 0 });
+    return next;
+  };
+
+  const porDiaLista = new Map(ag.porDiaLista);
+  const lista = [v, ...(porDiaLista.get(p.chaveDia) ?? [])];
+  porDiaLista.set(p.chaveDia, lista);
+
+  const quantidade = ag.total.quantidade + 1;
+  const total = somarValores([ag.total.total, v.valor]);
+  return {
+    porDia: bump(ag.porDia, p.chaveDia),
+    porSemana: bump(ag.porSemana, semana),
+    porMes: bump(ag.porMes, mes),
+    porDiaLista,
+    total: { quantidade, total, ticketMedio: quantidade ? deCentavos(paraCentavos(total) / BigInt(quantidade)) : 0 },
+  };
+}
+

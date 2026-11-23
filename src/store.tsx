@@ -13,6 +13,7 @@ import {
   listarEncomendas,
   listarEntregas,
   listarMembros,
+  listarPendentes,
   listarProdutos,
   listarReabastecimentos,
   listarVendas,
@@ -34,13 +35,14 @@ import { gerarId, montarBackup, normalizarBackup, parseBackup, verificarBackupOf
 import { NOME_LOJA_PADRAO } from "./lib/marca";
 import { PREFS_NOTIFICACAO_PADRAO, type EstadoEquipe, type Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FirebaseWebConfig, FormaCobranca, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
 import { configEfetiva, configValida, getFirebase, iniciarFirebase } from "./lib/firebase";
-import { enviarPendentes, estadoEquipeLocal, ouvirLoja, sincronizar, type ProgressoSync } from "./lib/sync";
+import { enviarPendentes, estadoEquipeLocal, obterCursorSync, ouvirLoja, sincronizar, type MudancaNuvem, type ProgressoSync } from "./lib/sync";
+import { isPermissionDenied, mensagemErroSync, rotuloOperacao } from "./lib/errosSync";
 import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
 import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
-import { entrarComPin, recuperarLideranca } from "./lib/acesso";
+import { entrarComPin, isNaoEMembroError, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
 import { LOJA_NUVEM_ID } from "./lib/firebasePadrao";
 import { calcularReabastecimento } from "./lib/reabastecimento";
-import { agregarVendas, type AgregadosVendas } from "./lib/agregados";
+import { acrescentarVendaAgregados, agregarVendas, type AgregadosVendas } from "./lib/agregados";
 import { autoriaAtualizacao, autoriaNova, montarAtividade } from "./lib/autoria";
 import { montarPrazo, tipoDeEncomenda, validarEncomenda, textoEndereco } from "./lib/encomendas";
 import {
@@ -63,7 +65,7 @@ interface Store {
   reabastecimentos: Reabastecimento[];
   recarregar: () => Promise<void>;
   importarArquivo: (raw: unknown, substituir?: boolean) => Promise<DadosNormalizados>;
-  registrarVenda: (valor: number) => Promise<Venda>;
+  registrarVenda: (valor: number, id?: string) => Promise<Venda>;
   excluirVenda: (id: string) => Promise<void>;
   salvarProduto: (p: Omit<Produto, "atualizado_em" | "loja" | "criadoPor" | "criadoPorEmail" | "atualizadoPor" | "atualizadoPorEmail"> & { loja?: string } & Partial<import("./lib/types").Autoria>) => Promise<void>;
   excluirProduto: (id: string) => Promise<void>;
@@ -93,8 +95,12 @@ interface Store {
   syncando: boolean;
   progressoSync?: ProgressoSync;
   erroSync?: string;
+  pendentesCount: number;
+  ultimoSync?: string;
+  precisaReentrarPin: boolean;
+  nomeReingresso: string;
   tentarSync: () => Promise<void>;
-  statusNuvem: "offline" | "sincronizando" | "sincronizado";
+  statusNuvem: "offline" | "sincronizando" | "sincronizado" | "pendente" | "erro";
   avisoImportados?: string;
   entrarNaNuvem: (nome: string, pin: string) => Promise<{ primeiraVez: boolean; codigoRecuperacao?: string; retidosImportados?: number }>;
   recuperarLider: (nome: string, pin: string, codigo: string) => Promise<void>;
@@ -140,6 +146,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [syncando, setSyncando] = useState(false);
   const [progressoSync, setProgressoSync] = useState<ProgressoSync>();
   const [erroSync, setErroSync] = useState<string>();
+  const [pendentesCount, setPendentesCount] = useState(0);
+  const [ultimoSync, setUltimoSync] = useState<string>();
+  const [cursorOuvir, setCursorOuvir] = useState<string | null>(null);
+  const [precisaReentrarPin, setPrecisaReentrarPin] = useState(false);
   const [ehDono, setEhDono] = useState(false);
   const [bloqueado, setBloqueado] = useState(false);
   const [membros, setMembros] = useState<MembroLoja[]>([]);
@@ -186,6 +196,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setConfig(cfgFinal);
     const prefs = await carregarPrefsNotificacao(cfgFinal);
     setPrefsNotificacao(prefs);
+    const [pend, ult] = await Promise.all([listarPendentes(), getMeta<string>("ultimo_sync")]);
+    setPendentesCount(pend.length);
+    setUltimoSync(ult || undefined);
     setPronto(true);
   }, []);
 
@@ -231,11 +244,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try { return getFirebase().auth.currentUser; } catch { return null; }
   };
 
-  const registrarVenda = useCallback(async (valor: number) => {
-    const v: Venda = { id: gerarId(), loja, valor, criado_em: agoraIso(), atualizado_em: agoraIso(), ...autoriaNova(usuarioDaSessao()) };
-    await upsertVenda(v);
-    setVendas((xs) => [v, ...xs]);
-    await anotar("criar", "vendas", v.id, `Venda de ${valor.toFixed(2)}`);
+  const registrarVenda = useCallback(async (valor: number, idPrevio?: string) => {
+    const v: Venda = { id: idPrevio || gerarId(), loja, valor, criado_em: agoraIso(), atualizado_em: agoraIso(), ...autoriaNova(usuarioDaSessao()) };
+    setVendas((xs) => xs.some((x) => x.id === v.id) ? xs : [v, ...xs]);
+    void upsertVenda(v)
+      .then(() => anotar("criar", "vendas", v.id, `Venda de ${valor.toFixed(2)}`))
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : "Não foi possível gravar a venda neste aparelho.";
+        console.error("gravar venda", e);
+        setErroSync(msg);
+      });
     return v;
   }, [loja, usuario, anotar]);
 
@@ -520,6 +538,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try { iniciarFirebase(cfg); } catch { /* ignore */ }
   }, []);
 
+  const nomeReingresso = (equipe?.meuNome || usuario?.displayName || "").trim();
+
+  const pedirReingresso = useCallback((motivo?: string) => {
+    setPrecisaReentrarPin(true);
+    setErroSync(motivo || "Este aparelho não está reconhecido na loja da nuvem. Entre de novo com o mesmo nome e o PIN.");
+  }, []);
+
+  const conferirParticipacao = useCallback(async (uid: string): Promise<boolean> => {
+    try {
+      const st = await verificarParticipacao(uid);
+      if (st === "ausente") {
+        pedirReingresso();
+        return false;
+      }
+      if (st === "bloqueado") {
+        setBloqueado(true);
+        setPrecisaReentrarPin(false);
+        return false;
+      }
+      setPrecisaReentrarPin(false);
+      return true;
+    } catch (e) {
+      if (isPermissionDenied(e) || isNaoEMembroError(e)) {
+        pedirReingresso(isNaoEMembroError(e) ? (e as Error).message : mensagemErroSync(e, "abrir a loja na nuvem"));
+        return false;
+      }
+      throw e;
+    }
+  }, [pedirReingresso]);
+
   const entrarNaNuvem = useCallback(async (nome: string, pin: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
     const { auth } = iniciarFirebase(firebaseCfg);
@@ -530,6 +578,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (estadoPin.codigoRecuperacao) setCodigoRecuperacao(estadoPin.codigoRecuperacao);
     const user = auth.currentUser;
     if (user) setUsuario(user);
+    setPrecisaReentrarPin(false);
     let retidosImportados = 0;
     if (user && navigator.onLine) {
       setSyncando(true); setErroSync(undefined);
@@ -545,13 +594,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         } else {
           setAvisoImportados(undefined);
         }
+      } catch (e) {
+        if (isNaoEMembroError(e) || isPermissionDenied(e)) {
+          const aindaMembro = await conferirParticipacao(user.uid);
+          if (!aindaMembro) throw (e instanceof Error ? e : new Error(mensagemErroSync(e, "sincronizar com a nuvem")));
+          setErroSync(mensagemErroSync(e, "sincronizar com a nuvem"));
+        } else {
+          setErroSync(mensagemErroSync(e, "sincronizar com a nuvem"));
+        }
       } finally {
         setSyncando(false);
       }
     }
     await recarregar();
+    const cursorEntrada = await obterCursorSync();
+    setCursorOuvir((atual) => (atual ? atual : (cursorEntrada ?? "")));
     return { primeiraVez: estadoPin.primeiraVez, codigoRecuperacao: estadoPin.codigoRecuperacao, retidosImportados };
-  }, [firebaseCfg, recarregar]);
+  }, [firebaseCfg, recarregar, conferirParticipacao]);
 
   const recuperarLider = useCallback(async (nome: string, pin: string, codigo: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
@@ -575,10 +634,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       } finally { setSyncando(false); }
     }
     await recarregar();
+    const cursorRec = await obterCursorSync();
+    setCursorOuvir((atual) => (atual ? atual : (cursorRec ?? "")));
   }, [firebaseCfg, recarregar]);
 
   const tentarSync = useCallback(async () => {
-    if (!usuario || !online || !configValida(firebaseCfg)) return;
+    if (!usuario || !online || !configValida(firebaseCfg) || precisaReentrarPin) return;
+    if (!(await conferirParticipacao(usuario.uid))) return;
     setSyncando(true); setErroSync(undefined);
     const desde = await getMeta<string>("ultimo_sync");
     try {
@@ -590,6 +652,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setAvisoImportados("Este aparelho tem um histórico antigo que só o Admin pode enviar à nuvem. Peça ao Admin para entrar primeiro e enviar o histórico. Os registros continuam neste aparelho.");
       }
       await recarregar();
+      const cursor = await obterCursorSync();
+      setCursorOuvir((atual) => (atual ? atual : (cursor ?? "")));
+      if (cursor) setUltimoSync(cursor);
       const [en, mem, v, prefs] = await Promise.all([
         listarEncomendas(), listarMembros(), listarVendas(), carregarPrefsNotificacao(),
       ]);
@@ -599,14 +664,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       await avisarNovosMembros(mem, prefs, Boolean(estado.ehLider || estado.ehDono), usuario.uid);
       await avisarAlteracoesOutros(v, en, prefs, usuario.uid, desde);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Falha na sincronização.";
-      setErroSync(msg);
-      const prefs = prefsNotificacao;
-      void avisarErroSync(msg, prefs);
+      if (isNaoEMembroError(e) || isPermissionDenied(e)) {
+        const aindaMembro = await conferirParticipacao(usuario.uid);
+        if (!aindaMembro) return;
+        const msg = isNaoEMembroError(e) ? (e as Error).message : mensagemErroSync(e, "sincronizar com a nuvem");
+        setErroSync(msg);
+        void avisarErroSync(msg, prefsNotificacao);
+      } else {
+        const msg = mensagemErroSync(e, "sincronizar com a nuvem");
+        setErroSync(msg);
+        const prefs = prefsNotificacao;
+        void avisarErroSync(msg, prefs);
+      }
     } finally {
       setSyncando(false);
     }
-  }, [usuario, online, firebaseCfg, recarregar, prefsNotificacao]);
+  }, [usuario, online, firebaseCfg, recarregar, prefsNotificacao, precisaReentrarPin, conferirParticipacao, pedirReingresso]);
   tentarSyncRef.current = tentarSync;
 
   const sairDaNuvem = useCallback(async () => {
@@ -620,40 +693,68 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setBloqueado(false);
   }, [firebaseCfg]);
 
-  const envioTimer = useRef<number>(0);
-  const agendarEnvio = useCallback(() => {
+  const enviandoRef = useRef(false);
+  const reenviarRef = useRef(false);
+  const enviarAgora = useCallback(() => {
     if (!navigator.onLine) return;
-    window.clearTimeout(envioTimer.current);
-    envioTimer.current = window.setTimeout(() => {
-      void (async () => {
+    if (enviandoRef.current) {
+      reenviarRef.current = true;
+      return;
+    }
+    enviandoRef.current = true;
+    void (async () => {
+      try {
         let user = usuario;
         if (!user) {
           try { user = getFirebase().auth.currentUser; } catch { user = null; }
         }
         if (!user) return;
-        setSyncando(true);
         try {
           const eq = await estadoEquipeLocal();
-          await enviarPendentes(LOJA_NUVEM_ID, Boolean(eq?.ehDono || eq?.ehLider));
-          setErroSync(undefined);
+          const resultado = await enviarPendentes(LOJA_NUVEM_ID, Boolean(eq?.ehDono || eq?.ehLider));
+          const [pend, ult] = await Promise.all([listarPendentes(), getMeta<string>("ultimo_sync")]);
+          setPendentesCount(pend.length);
+          if (ult) setUltimoSync(ult);
+          if (resultado.recusados.length) {
+            const primeira = resultado.recusados[0];
+            const msg = primeira.motivo || mensagemErroSync(new Error("permission-denied"), rotuloOperacao(primeira.colecao, primeira.id));
+            setErroSync(resultado.recusados.length === 1 ? msg : `${msg} Outras ${resultado.recusados.length - 1} alterações também foram recusadas e ficaram neste aparelho.`);
+            void conferirParticipacao(user.uid);
+          } else {
+            setErroSync(undefined);
+          }
         } catch (e) {
-          const msg = e instanceof Error ? e.message : "Falha ao enviar alterações.";
-          console.error("envio pendentes", e);
-          setErroSync(msg);
-        } finally {
-          setSyncando(false);
+          if (isNaoEMembroError(e) || isPermissionDenied(e)) {
+            const aindaMembro = await conferirParticipacao(user.uid);
+            if (!aindaMembro) return;
+            const msg = isNaoEMembroError(e) ? (e as Error).message : mensagemErroSync(e, "enviar as alterações");
+            console.error("envio pendentes", e);
+            setErroSync(msg);
+          } else {
+            const msg = mensagemErroSync(e, "enviar as alterações");
+            console.error("envio pendentes", e);
+            setErroSync(msg);
+          }
+          const pend = await listarPendentes().catch(() => []);
+          setPendentesCount(pend.length);
         }
-      })();
-    }, 400);
-  }, [usuario]);
+      } finally {
+        enviandoRef.current = false;
+        if (reenviarRef.current) {
+          reenviarRef.current = false;
+          enviarAgora();
+        }
+      }
+    })();
+  }, [usuario, conferirParticipacao, pedirReingresso]);
 
   useEffect(() => {
-    aoHaverPendente(() => { agendarEnvio(); });
+    aoHaverPendente(() => { enviarAgora(); });
     return () => aoHaverPendente(undefined);
-  }, [agendarEnvio]);
+  }, [enviarAgora]);
 
   useEffect(() => {
-    if (usuario && online && pronto && (temDados || equipe)) void tentarSync();
+    if (usuario && online && pronto && (temDados || equipe) && !precisaReentrarPin) void tentarSync();
   }, [usuario, online, pronto, temDados]); // eslint-disable-line
 
   useEffect(() => {
@@ -669,17 +770,61 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [usuario, tentarSync]);
 
-  useEffect(() => {
-    if (!usuario || !online || !pronto || !firebaseCfg) return;
-    let unsub: (() => void) | undefined;
-    try {
-      unsub = ouvirLoja(LOJA_NUVEM_ID, () => { void recarregar(); });
-    } catch { /* ainda sem permissão */ }
-    return () => { unsub?.(); };
-  }, [usuario, online, pronto, firebaseCfg, recarregar]);
+
+  const aplicarMudancaNuvem = useCallback((mudanca?: MudancaNuvem) => {
+    if (!mudanca) {
+      void recarregar();
+      return;
+    }
+    if (mudanca.colecao === "vendas") {
+      setVendas((xs) => {
+        const mapa = new Map(xs.map((x) => [x.id, x]));
+        for (const r of mudanca.registros) {
+          const v = r as import("./lib/types").Venda;
+          if (v.excluido) mapa.delete(v.id);
+          else mapa.set(v.id, v);
+        }
+        return [...mapa.values()].sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+      });
+      void listarPendentes().then((pend) => setPendentesCount(pend.length)).catch(() => undefined);
+      return;
+    }
+    void recarregar();
+  }, [recarregar]);
 
   useEffect(() => {
-    if (!usuario || !online || !pronto || !temDados || !firebaseCfg) return;
+    if (!usuario || !pronto) return;
+    let cancel = false;
+    void obterCursorSync().then((c) => {
+      if (!cancel) setCursorOuvir((atual) => (atual ? atual : (c ?? "")));
+    });
+    return () => { cancel = true; };
+  }, [usuario, pronto]);
+
+  useEffect(() => {
+    if (!usuario || !pronto || !firebaseCfg || cursorOuvir === null || precisaReentrarPin) return;
+    let unsub: (() => void) | undefined;
+    try {
+      unsub = ouvirLoja(
+        LOJA_NUVEM_ID,
+        (mudanca) => { aplicarMudancaNuvem(mudanca); },
+        (e) => {
+          const msg = mensagemErroSync(e, rotuloOperacao("escuta"));
+          if (isPermissionDenied(e)) void conferirParticipacao(usuario.uid);
+          else setErroSync(msg);
+        },
+        cursorOuvir || undefined,
+      );
+    } catch (e) {
+      const msg = mensagemErroSync(e, rotuloOperacao("escuta"));
+      if (isPermissionDenied(e) || isNaoEMembroError(e)) void conferirParticipacao(usuario.uid);
+      else setErroSync(msg);
+    }
+    return () => { unsub?.(); };
+  }, [usuario, pronto, firebaseCfg, cursorOuvir, aplicarMudancaNuvem, precisaReentrarPin, conferirParticipacao]);
+
+  useEffect(() => {
+    if (!usuario || !online || !pronto || !temDados || !firebaseCfg || precisaReentrarPin) return;
     let unsub: (() => void) | undefined;
     try {
       unsub = ouvirMembros((lista) => setMembros(lista));
@@ -688,7 +833,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (document.visibilityState !== "visible") return;
       void atualizarPresenca(usuario.uid).then((em) => {
         setMembros((xs) => xs.map((m) => m.uid === usuario.uid ? { ...m, ultimoAcesso: em } : m));
-      }).catch(() => { /* ainda não é membro, ou offline */ });
+      }).catch((e) => { if (isPermissionDenied(e)) void conferirParticipacao(usuario.uid); });
     };
     pulsar();
     const id = window.setInterval(pulsar, INTERVALO_PRESENCA_MS);
@@ -698,7 +843,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", pulsar);
     };
-  }, [usuario, online, pronto, temDados, firebaseCfg]);
+  }, [usuario, online, pronto, temDados, firebaseCfg, precisaReentrarPin, conferirParticipacao]);
 
 
   useEffect(() => {
@@ -710,8 +855,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [pronto, temDados, encomendas, prefsNotificacao]);
 
-  const agregados = useMemo(() => agregarVendas(vendas), [vendas]);
-  const statusNuvem = !online ? "offline" as const : syncando ? "sincronizando" as const : "sincronizado" as const;
+  const agregadosRef = useRef<AgregadosVendas | null>(null);
+  const vendasAgRef = useRef<Venda[]>([]);
+  const agregados = useMemo(() => {
+    const prev = vendasAgRef.current;
+    const agPrev = agregadosRef.current;
+    const acrescentouUma = Boolean(
+      agPrev && vendas.length === prev.length + 1 && vendas[0] && vendas.slice(1).every((v, i) => v === prev[i]),
+    );
+    const next = acrescentouUma ? acrescentarVendaAgregados(agPrev!, vendas[0]) : agregarVendas(vendas);
+    agregadosRef.current = next;
+    vendasAgRef.current = vendas;
+    return next;
+  }, [vendas]);
+
+  const statusNuvem = !online
+    ? "offline" as const
+    : syncando
+      ? "sincronizando" as const
+      : erroSync
+        ? "erro" as const
+        : pendentesCount > 0
+          ? "pendente" as const
+          : "sincronizado" as const;
 
 
   const value = useMemo<Store>(() => ({
@@ -719,13 +885,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, confirmarEncomenda, cancelarEncomenda, marcarPagamentoEncomenda, excluirEncomenda, prefsNotificacao, salvarPrefs,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, pendentesCount, ultimoSync, precisaReentrarPin, nomeReingresso, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
     ehDono, bloqueado, membros, atividades, equipe, agregados,
   }), [pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, confirmarEncomenda, cancelarEncomenda, marcarPagamentoEncomenda, excluirEncomenda, prefsNotificacao, salvarPrefs,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, pendentesCount, ultimoSync, precisaReentrarPin, nomeReingresso, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
     ehDono, bloqueado, membros, atividades, equipe, agregados]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

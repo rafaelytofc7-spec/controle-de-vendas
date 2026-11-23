@@ -127,6 +127,27 @@ async function lerSePermitido(ref: ReturnType<typeof doc>) {
   }
 }
 
+
+export class NaoEMembroError extends Error {
+  constructor(message = "Este aparelho não está reconhecido na loja da nuvem. Entre de novo com o mesmo nome e o PIN.") {
+    super(message);
+    this.name = "NaoEMembroError";
+  }
+}
+
+export function isNaoEMembroError(e: unknown): boolean {
+  return e instanceof NaoEMembroError || (e instanceof Error && e.name === "NaoEMembroError");
+}
+
+/** Uses current rules (permission-denied ⇒ not a member) and the self-read rule when published. */
+export async function verificarParticipacao(uid: string): Promise<"membro" | "ausente" | "bloqueado"> {
+  const { membroRef } = refs(uid);
+  const snap = await lerSePermitido(membroRef);
+  if (!snap?.exists()) return "ausente";
+  if ((snap.data() as MembroLoja).bloqueado) return "bloqueado";
+  return "membro";
+}
+
 export async function entrarComPin(nomeBruto: string, pin: string): Promise<EstadoEquipe & { codigoRecuperacao?: string; primeiraVez: boolean }> {
   const nome = nomeBruto.trim();
   if (!nomeValido(nome)) throw new Error("Informe um nome de 2 a 40 letras.");

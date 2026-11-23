@@ -121,6 +121,55 @@ export async function listarVendas(): Promise<Venda[]> {
   return all.filter((v) => !v.excluido).sort((a, b) => b.criado_em.localeCompare(a.criado_em));
 }
 
+export async function obterVenda(id: string): Promise<Venda | undefined> {
+  const d = await db();
+  return d.get("vendas", id);
+}
+
+export async function obterProduto(id: string): Promise<Produto | undefined> {
+  const d = await db();
+  return d.get("produtos", id);
+}
+
+export async function obterEntrega(id: string): Promise<Entrega | undefined> {
+  const d = await db();
+  return d.get("entregas", id);
+}
+
+export async function obterEncomenda(id: string): Promise<Encomenda | undefined> {
+  const d = await db();
+  return d.get("encomendas", id);
+}
+
+export async function obterCobranca(id: string): Promise<Cobranca | undefined> {
+  const d = await db();
+  return d.get("cobrancas", id);
+}
+
+export async function obterReabastecimento(id: string): Promise<Reabastecimento | undefined> {
+  const d = await db();
+  return d.get("reabastecimentos", id);
+}
+
+export async function obterAtividade(id: string): Promise<Atividade | undefined> {
+  const d = await db();
+  return d.get("atividades", id);
+}
+
+export async function obterPendenteRegistro(colecao: string, id: string): Promise<unknown> {
+  switch (colecao) {
+    case "vendas": return obterVenda(id);
+    case "produtos": return obterProduto(id);
+    case "entregas": return obterEntrega(id);
+    case "encomendas": return obterEncomenda(id);
+    case "cobrancas": return obterCobranca(id);
+    case "reabastecimentos": return obterReabastecimento(id);
+    case "atividades": return obterAtividade(id);
+    case "configuracao": return obterConfig();
+    default: return undefined;
+  }
+}
+
 export async function listarProdutos(): Promise<Produto[]> {
   const d = await db();
   const all = await d.getAll("produtos");

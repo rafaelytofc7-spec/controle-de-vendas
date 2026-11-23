@@ -636,3 +636,36 @@ html.leitor-nativo-ativo .leitor-visor { background: transparent; }
 @media (max-width: 320px) {
   .uso-hoje { grid-template-columns: 1fr; }
 }
+
+
+/* v1.7.2 — câmera atrás da WebView, confirmação de venda e status */
+html.leitor-nativo-ativo,
+html.leitor-nativo-ativo body,
+html.leitor-nativo-ativo #root,
+html.leitor-nativo-ativo .app {
+  background: transparent !important;
+}
+html.leitor-nativo-ativo .app { visibility: hidden; }
+html.leitor-nativo-ativo .leitor-overlay {
+  visibility: visible;
+  background: transparent;
+}
+html.leitor-nativo-ativo .leitor-visor {
+  background: transparent;
+  box-shadow: 0 0 0 160vmax rgba(8, 14, 10, .62);
+}
+.leitor-erro {
+  margin: 0;
+  color: #ffd0c8;
+  font-weight: 700;
+  text-align: center;
+}
+.confirmacao-venda {
+  margin: 8px 0 0;
+  text-align: center;
+  font-weight: 800;
+  color: var(--folha-3);
+}
+.status-sync-detalhe { font-size: 12px; line-height: 1.35; }
+.log-leitor { max-height: 260px; overflow: auto; font-size: 12px; }
+.log-leitor .erro { color: var(--tomate-2); }

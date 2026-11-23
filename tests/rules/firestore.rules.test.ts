@@ -253,4 +253,13 @@ describe("regras do Firestore (PIN anônimo, líder e loja compartilhada)", () =
       bloqueado: true,
     }, { merge: true }));
   });
+
+  it("uid de fora lê só o próprio documento de membro, não a lista nem outro membro", async () => {
+    await semearLoja();
+    const fora = ctx("aparelho-novo");
+    await assertSucceeds(getDoc(doc(fora, "lojas", LOJA, "membros", "aparelho-novo")));
+    await assertFails(getDoc(doc(fora, "lojas", LOJA, "membros", "lider")));
+    await assertFails(getDocs(collection(fora, "lojas", LOJA, "membros")));
+    await assertFails(getDocs(collection(fora, "lojas", LOJA, "vendas")));
+  });
 });

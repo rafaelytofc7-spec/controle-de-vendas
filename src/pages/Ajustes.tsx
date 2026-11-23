@@ -7,10 +7,11 @@ import { pedirPermissaoNotificacoes, tocarSomInApp } from "../lib/notificacoes";
 import { GUIA_FIREBASE } from "../lib/guia";
 import { ehNativo, exportarArquivo } from "../lib/plataforma";
 import { APP_VERSION, APK_RELEASE_URL, buscarVersaoRemota, temAtualizacao } from "../lib/versao";
+import { formatarDataHora } from "../lib/datas";
 
 export function Ajustes() {
   const store = useStore();
-  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, importarArquivo, ehDono, entrarNaNuvem, recuperarLider, sairDaNuvem, equipe, codigoRecuperacao, prefsNotificacao, salvarPrefs, statusNuvem } = store;
+  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, pendentesCount, ultimoSync, tentarSync, importarArquivo, ehDono, entrarNaNuvem, recuperarLider, sairDaNuvem, equipe, codigoRecuperacao, prefsNotificacao, salvarPrefs, statusNuvem } = store;
   const [tab, setTab] = useState<"loja" | "backup" | "nuvem" | "avisos" | "guia">("loja");
   const [nome, setNome] = useState(config.nome_loja);
   const [tel, setTel] = useState(config.telefone);
@@ -208,12 +209,16 @@ export function Ajustes() {
           {configValida(firebaseCfg) && (
             <>
               <p className="muted small">Projeto: {firebaseCfg?.projectId} · {online ? "online" : "offline"} · {usuario ? (equipe?.ehLider || ehDono ? `Admin: ${equipe?.meuNome || usuario.displayName || "você"}` : `conectado: ${equipe?.meuNome || usuario.displayName || "aparelho"}`) : "não conectado"} · {statusNuvem}</p>
+              <div className="status-sync-detalhe" data-testid="status-sync-detalhe">
+                <div data-testid="pendentes-sync">{pendentesCount === 0 ? "Nada pendente de envio." : pendentesCount === 1 ? "1 alteração pendente de envio." : `${pendentesCount} alterações pendentes de envio.`}</div>
+                <div data-testid="ultimo-sync">{ultimoSync ? `Último sync: ${formatarDataHora(ultimoSync)}` : "Ainda não sincronizou neste aparelho."}</div>
+              </div>
               {syncando && <p className="muted">Sincronizando… {progressoSync ? `${progressoSync.fase} ${progressoSync.feito}/${progressoSync.total}` : ""}</p>}
-              {erroSync && <div className="banner erro">{erroSync}</div>}
+              {erroSync && <div className="banner erro" data-testid="erro-sync-motivo">{erroSync}</div>}
               {usuario && equipe ? (
                 <>
                   <div className="row wrap">
-                    <button className="btn grow" disabled={!online || syncando} onClick={() => void tentarSync()}>Sincronizar de novo</button>
+                    <button className="btn grow" data-testid="sincronizar-agora" disabled={!online || syncando} onClick={() => void tentarSync()}>Sincronizar agora</button>
                     <button className="btn grow" onClick={() => {
                       if (!confirm("Sair deste aparelho cria uma nova identidade na próxima entrada. O Admin deve guardar o código de recuperação antes. Continuar?")) return;
                       void sairDaNuvem();

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTravaToque } from "../components/useTravaToque";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
 import { formatarDataHora, horarioLocalParaIso, isoParaDiaHora, hojeChave } from "../lib/datas";
@@ -27,6 +28,7 @@ export function Encomendas() {
     marcarPagamentoEncomenda, excluirEncomenda, config,
   } = useStore();
   const { confirmar, dialogo } = useConfirmar();
+  const trava = useTravaToque();
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [edit, setEdit] = useState(false);
   const [erro, setErro] = useState("");
@@ -88,11 +90,12 @@ export function Encomendas() {
   }
 
   async function salvar() {
+    if (!trava.comecar()) return;
     const data = horarioLocalParaIso(dia, horaEntrega);
     const prazo = horarioLocalParaIso(dia, horaLembrete || config.hora_lembrete_padrao || "12:00");
     const end = tipo === "entrega" ? enderecoAtual() : enderecoVazio();
     const msg = validarEncomenda({ cliente, produto, telefone, tipo, endereco: tipo === "entrega" ? end : null, data_entrega: data });
-    if (msg) { setErro(msg); return; }
+    if (msg) { setErro(msg); trava.soltar(); return; }
     try {
       await salvarEncomenda({
         id, cliente, produto, valor: Number(valor.replace(",", ".")) || 0,
@@ -105,6 +108,8 @@ export function Encomendas() {
       setEdit(false);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Não foi possível salvar.");
+    } finally {
+      trava.soltar();
     }
   }
 
@@ -256,7 +261,7 @@ export function Encomendas() {
               )}
               <div className="row acoes-form">
                 <button className="btn grow" onClick={() => setEdit(false)}>Cancelar</button>
-                <button className="btn btn-primary grow" onClick={() => void salvar()}>Salvar</button>
+                <button className="btn btn-primary grow" disabled={trava.ocupado} onClick={() => void salvar()}>Salvar</button>
               </div>
             </div>
           </div>

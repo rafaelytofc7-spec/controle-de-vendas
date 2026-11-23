@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { useTravaToque } from "../components/useTravaToque";
 import { useStore } from "../store";
 import {
   acrescentarDigito, apagarUltimoDigito, calcular, digitsParaValor,
@@ -21,8 +22,9 @@ import { agoraIso } from "../lib/datas";
 
 const CHAVES = [5, 10, 20, 50, 100];
 
-const PainelTroco = memo(function PainelTroco({ valor }: { valor: number }) {
+const PainelTroco = memo(function PainelTroco({ valor, resetChave }: { valor: number; resetChave: number }) {
   const [recebido, setRecebido] = useState("");
+  useEffect(() => { setRecebido(""); }, [resetChave]);
   const rec = Number(recebido.replace(/\./g, "").replace(",", ".")) || 0;
   const tco = troco(valor, rec);
   return (
@@ -77,6 +79,10 @@ export function Calculadora() {
   const [cobrancaAtual, setCobrancaAtual] = useState<string | null>(null);
   const [avisoScan, setAvisoScan] = useState("");
   const [cadastroScan, setCadastroScan] = useState<{ codigo: string; nome: string; preco: string; unidade: string } | null>(null);
+  const [resetTroco, setResetTroco] = useState(0);
+  const [confirmacao, setConfirmacao] = useState("");
+  const trava = useTravaToque();
+  const travaScan = useTravaToque();
 
   useEffect(() => {
     const t = setInterval(() => setAgora(Date.now()), 15_000);
@@ -93,7 +99,12 @@ export function Calculadora() {
 
   const digito = useCallback((d: string) => setDigits((x) => acrescentarDigito(x, d)), []);
   const apagar = useCallback(() => setDigits((x) => apagarUltimoDigito(x)), []);
-  const limpar = useCallback(() => { setDigits(""); setAcumulado(null); setOperador(null); }, []);
+  const limpar = useCallback(() => {
+    setDigits("");
+    setAcumulado(null);
+    setOperador(null);
+    setResetTroco((n) => n + 1);
+  }, []);
 
   async function aplicarOp(op: Operador) {
     if (op === "*" && valor > 0) {
@@ -123,16 +134,28 @@ export function Calculadora() {
   }
 
   async function registrar() {
+    if (!trava.comecar()) return;
     const v = (acumulado != null && !digits && operador == null) ? acumulado : valor;
-    if (v <= 0) return;
-    await registrarVenda(v);
+    if (v <= 0) {
+      trava.soltar();
+      return;
+    }
+    const id = gerarId();
     setHistorico((h) => [{ valor: v, em: Date.now() }, ...h]);
+    setConfirmacao(`Venda de ${formatarReais(v)} registrada`);
+    window.setTimeout(() => setConfirmacao(""), 2500);
     limpar();
+    void registrarVenda(v, id);
   }
+
+  useEffect(() => {
+    if (trava.ocupado && !digits && acumulado == null) trava.soltar();
+  }, [trava, digits, acumulado]);
 
   async function abrirCobranca(provedor: "stone" | "picpay" | "manual", forma: "debito" | "credito" | "pix") {
     const v = valor;
     if (v <= 0) return;
+    setResetTroco((n) => n + 1);
     const c = await registrarCobranca(v, provedor, forma);
     setCobrancaAtual(c.id);
   }
@@ -180,23 +203,28 @@ export function Calculadora() {
 
   async function salvarProdutoDoScan() {
     if (!cadastroScan) return;
-    const nome = cadastroScan.nome.trim();
-    const preco = Number(cadastroScan.preco.replace(/\./g, "").replace(",", ".")) || 0;
-    if (!nome || preco <= 0) { setAvisoScan("Informe o nome e o preço do produto."); return; }
-    if (cadastroScan.unidade.trim().toLowerCase() === "kg" || /quilo/.test(cadastroScan.unidade.toLowerCase())) {
-      setAvisoScan("Produtos vendidos por quilo não usam o leitor. Cadastre no cardápio e use a calculadora.");
-      return;
+    if (!travaScan.comecar()) return;
+    try {
+      const nome = cadastroScan.nome.trim();
+      const preco = Number(cadastroScan.preco.replace(/\./g, "").replace(",", ".")) || 0;
+      if (!nome || preco <= 0) { setAvisoScan("Informe o nome e o preço do produto."); return; }
+      if (cadastroScan.unidade.trim().toLowerCase() === "kg" || /quilo/.test(cadastroScan.unidade.toLowerCase())) {
+        setAvisoScan("Produtos vendidos por quilo não usam o leitor. Cadastre no cardápio e use a calculadora.");
+        return;
+      }
+      const id = gerarId();
+      await salvarProduto({
+        id, nome, preco, unidade: cadastroScan.unidade.trim() || "un",
+        ordem: produtos.length + 1, criado_em: agoraIso(),
+        preco_promocional: null, promo_inicia_em: null, promo_expira_em: null,
+        codigos_barras: [cadastroScan.codigo],
+      });
+      aplicarPrecoLido(preco);
+      setAvisoScan(`${nome} cadastrado e ${formatarReais(preco)} adicionado à venda.`);
+      setCadastroScan(null);
+    } finally {
+      travaScan.soltar();
     }
-    const id = gerarId();
-    await salvarProduto({
-      id, nome, preco, unidade: cadastroScan.unidade.trim() || "un",
-      ordem: produtos.length + 1, criado_em: agoraIso(),
-      preco_promocional: null, promo_inicia_em: null, promo_expira_em: null,
-      codigos_barras: [cadastroScan.codigo],
-    });
-    aplicarPrecoLido(preco);
-    setAvisoScan(`${nome} cadastrado e ${formatarReais(preco)} adicionado à venda.`);
-    setCadastroScan(null);
   }
 
   const dataHoje = new Date().toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
@@ -248,13 +276,14 @@ export function Calculadora() {
         <button className="btn op" onClick={() => void aplicarOp("/")}>÷</button>
       </div>
 
-      <PainelTroco valor={valor} />
+      <PainelTroco valor={valor} resetChave={resetTroco} />
+      {confirmacao && <p className="confirmacao-venda" data-testid="confirmacao-venda">{confirmacao}</p>}
 
       <div className="acoes-venda">
         <BotaoLeitor testId="ler-codigo-venda" onClick={() => void lerProduto()} />
         <div className="acoes-venda-baixo">
           <button className="btn grow" onClick={limpar}>Limpar</button>
-          <button className="btn btn-primary grow" data-testid="registrar-venda" disabled={valor <= 0} onClick={() => void registrar()}>Registrar venda</button>
+          <button className="btn btn-primary grow" data-testid="registrar-venda" disabled={valor <= 0 || trava.ocupado} onClick={() => void registrar()}>Registrar venda</button>
         </div>
       </div>
       {avisoScan && <p className="muted small" data-testid="aviso-scan">{avisoScan}</p>}
@@ -273,7 +302,7 @@ export function Calculadora() {
           </label>
           <div className="row">
             <button type="button" className="btn grow" onClick={() => setCadastroScan(null)}>Agora não</button>
-            <button type="button" className="btn btn-primary grow" data-testid="scan-salvar-produto" onClick={() => void salvarProdutoDoScan()}>Cadastrar e somar</button>
+            <button type="button" className="btn btn-primary grow" data-testid="scan-salvar-produto" disabled={travaScan.ocupado} onClick={() => void salvarProdutoDoScan()}>Cadastrar e somar</button>
           </div>
         </div>
       )}

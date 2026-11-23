@@ -1,17 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { NOME_LOJA_PADRAO } from "../lib/marca";
 import { nomeValido, pinValido } from "../lib/acesso";
 
 export function EntradaNuvem() {
-  const { entrarNaNuvem, recuperarLider, online, syncando, progressoSync } = useStore();
-  const [nome, setNome] = useState("");
+  const { entrarNaNuvem, recuperarLider, online, syncando, progressoSync, precisaReentrarPin, nomeReingresso } = useStore();
+  const [nome, setNome] = useState(nomeReingresso);
   const [pin, setPin] = useState("");
   const [codigo, setCodigo] = useState("");
   const [mostrarRecuperacao, setMostrarRecuperacao] = useState(false);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (nomeReingresso && !nome) setNome(nomeReingresso);
+  }, [nomeReingresso, nome]);
+
 
   async function entrar() {
     setErro(""); setAviso("");
@@ -58,7 +63,12 @@ export function EntradaNuvem() {
             <img src={`${import.meta.env.BASE_URL}marca-cesta.png`} alt="" style={{ width: 72, height: 72, borderRadius: 18 }} />
             <p className="splash-loja">{NOME_LOJA_PADRAO}</p>
           </div>
-          <h2>Entrar na loja</h2>
+          <h2>{precisaReentrarPin ? "Entre de novo na loja" : "Entrar na loja"}</h2>
+          {precisaReentrarPin && (
+            <div className="banner aviso-atualizacao" data-testid="porta-reingresso">
+              Este aparelho não está reconhecido na nuvem (a sessão pode ter mudado depois de reinstalação ou da limpeza dos dados). Entre de novo com o mesmo nome e o PIN da loja. As vendas deste aparelho continuam aqui.
+            </div>
+          )}
           <p className="muted">Todo mundo usa o mesmo banco na nuvem. Escreva o seu nome e o PIN da loja (os dois são obrigatórios). O nome aparece em cada venda que você registrar e na tela Equipe. O primeiro aparelho vira Admin; os outros entram com o mesmo PIN.</p>
           {!online && (
             <div className="banner erro" data-testid="porta-offline">
