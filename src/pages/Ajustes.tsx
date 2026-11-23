@@ -80,9 +80,9 @@ export function Ajustes() {
       if (r.primeiraVez && r.codigoRecuperacao) {
         setAviso(`Você é o Admin desta loja. Anote o código de recuperação: ${r.codigoRecuperacao}. Ele aparece só agora neste aparelho. Sem ele, se este aparelho for perdido, não dá para retomar o papel de Admin.`);
       } else if (r.codigoRecuperacao) {
-        setAviso("Entrou na loja compartilhada. A sincronização começa sozinha.");
+        setAviso("Nome salvo. A sincronização continua sozinha.");
       } else {
-        setAviso("Entrou na loja compartilhada. A sincronização começa sozinha.");
+        setAviso("Nome salvo. A sincronização continua sozinha.");
       }
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Não foi possível entrar.");
@@ -182,7 +182,7 @@ export function Ajustes() {
       {tab === "nuvem" && (
         <div className="card col">
           <h3>Nuvem compartilhada</h3>
-          <p className="muted">A nuvem já vem configurada neste aplicativo. Na primeira abertura ele pede só o nome e já entra no mesmo banco. Se a loja já existe, quem entra vira membro; o Admin é quem usa o código de recuperação. A sincronização é automática: não é preciso tocar em “Sincronizar agora”, salvo se quiser forçar uma nova tentativa.</p>
+          <p className="muted">A nuvem já vem configurada neste aplicativo. O aparelho entra sozinho na loja ao abrir, sem pedir nome. O nome é opcional e pode ser trocado aqui; o Admin é quem usa o código de recuperação. A sincronização é automática: não é preciso tocar em “Sincronizar agora”, salvo se quiser forçar uma nova tentativa.</p>
           {firebaseOverride && (
             <div className="row wrap">
               <button className="btn" onClick={() => void limparFirebase().then(() => setAviso("Voltou à nuvem padrão do aplicativo."))}>Usar nuvem padrão</button>
@@ -211,12 +211,15 @@ export function Ajustes() {
                   )}
                 </>
               ) : (
+                <p className="muted small">Conectando à loja automaticamente… O aplicativo já funciona offline; as vendas são enviadas quando a conexão voltar.</p>
+              )}
+              {(
                 <>
                   <label className="field">Seu nome
                     <input className="input" value={nomePessoa} onChange={(e) => setNomePessoa(e.target.value)} placeholder="Como você aparece para a equipe" autoComplete="name" />
                   </label>
-                  <button className="btn btn-primary btn-block" disabled={busy || !online} onClick={() => void entrarNome()}>Entrar com o nome</button>
-                  <button className="btn" type="button" onClick={() => setMostrarRecuperacao((v) => !v)}>Tenho um código de recuperação</button>
+                  <button className="btn btn-primary btn-block" disabled={busy || !online} onClick={() => void entrarNome()}>Salvar nome (opcional)</button>
+                  {!(equipe?.ehLider || ehDono) && <button className="btn" type="button" onClick={() => setMostrarRecuperacao((v) => !v)}>Tenho um código de recuperação (Admin)</button>}
                   {mostrarRecuperacao && (
                     <>
                       <label className="field">Código de recuperação

@@ -1,6 +1,5 @@
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { StoreProvider, useStore } from "./store";
-import { PrimeiraExecucao } from "./pages/PrimeiraExecucao";
 import { Calculadora } from "./pages/Calculadora";
 import { LivroCaixa } from "./pages/LivroCaixa";
 import { Relatorios, RelatorioMes } from "./pages/Relatorios";
@@ -13,7 +12,6 @@ import { Ajustes } from "./pages/Ajustes";
 import { Administracao } from "./pages/Administracao";
 import { Mais } from "./pages/Mais";
 import { Equipe } from "./pages/Equipe";
-import { EntradaNuvem } from "./pages/EntradaNuvem";
 import { NOME_LOJA_PADRAO } from "./lib/marca";
 import { APP_VERSION, APK_RELEASE_URL, buscarVersaoRemota, temAtualizacao } from "./lib/versao";
 import { useEffect, useState } from "react";
@@ -57,7 +55,6 @@ function Shell() {
     return () => ac.abort();
   }, []);
 
-  const entrou = Boolean(equipe?.liderUid);
   const rotuloStatus = statusNuvem === "offline"
     ? "Offline"
     : statusNuvem === "sincronizando"
@@ -87,8 +84,6 @@ function Shell() {
       </div>
     );
   }
-  if (!entrou || precisaReentrarPin) return <EntradaNuvem />;
-  if (!temDados) return <PrimeiraExecucao />;
 
   return (
     <div className="app">

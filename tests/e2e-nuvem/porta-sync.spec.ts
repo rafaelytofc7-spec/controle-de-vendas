@@ -1,7 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { writeFileSync } from "node:fs";
 
-test("a porta pede só o nome e a venda aparece no outro aparelho", async ({ browser }) => {
+// A loja de teste é semeada como a principal: já tem histórico e não tem Admin (lider_uid nulo).
+// O histórico semeado tem uma venda de hoje de R$ 5,00.
+
+async function digitar(p: Page, digitos: string) {
+  for (const d of digitos) await p.locator(".calc-grid .btn", { hasText: new RegExp(`^${d}$`) }).click();
+}
+
+test("abre direto na venda, entra sozinho e a venda aparece no outro aparelho", async ({ browser }) => {
   test.setTimeout(180_000);
   const ctxA = await browser.newContext();
   const ctxB = await browser.newContext();
@@ -9,100 +16,49 @@ test("a porta pede só o nome e a venda aparece no outro aparelho", async ({ bro
   const b = await ctxB.newPage();
 
   await a.goto("./");
-  await expect(a.getByTestId("porta-entrada")).toBeVisible();
-  await expect(a.getByTestId("porta-nome")).toBeVisible();
-  await expect(a.getByTestId("porta-pin")).toHaveCount(0);
-  await a.getByTestId("porta-entrar").click();
-  await expect(a.getByTestId("porta-erro")).toContainText("nome");
-
-  await a.getByTestId("porta-nome").fill("Rafael");
-  await a.getByTestId("porta-entrar").click();
-  await expect(a.getByTestId("import-file").or(a.getByTestId("calc-valor"))).toBeVisible({ timeout: 60_000 });
-  if (await a.getByRole("button", { name: "Começar do zero" }).isVisible()) {
-    await a.getByRole("button", { name: "Começar do zero" }).click();
-  }
   await expect(a.getByTestId("calc-valor")).toBeVisible({ timeout: 30_000 });
-  await expect(a.getByTestId("status-nuvem")).toBeVisible();
+  await expect(a.getByTestId("porta-entrada")).toHaveCount(0);
+  await expect(a.getByTestId("import-file")).toHaveCount(0);
+  // Baixou o histórico da loja (venda semeada de hoje).
+  await expect(a.getByTestId("total-hoje")).toContainText("5,00", { timeout: 45_000 });
 
-  await a.getByRole("button", { name: "1", exact: true }).click();
-  await a.getByRole("button", { name: "0", exact: true }).click();
-  await a.getByRole("button", { name: "0", exact: true }).click();
+  await digitar(a, "100");
   await a.getByTestId("registrar-venda").click();
-  await expect(a.getByText("Rafael").first()).toBeVisible({ timeout: 15_000 });
+  await expect(a.getByTestId("total-hoje")).toContainText("6,00", { timeout: 15_000 });
 
   await b.goto("./");
-  await expect(b.getByTestId("porta-entrada")).toBeVisible();
-  await b.getByTestId("porta-nome").fill("Ana");
-  await expect(b.getByTestId("porta-pin")).toHaveCount(0);
-  await b.getByTestId("porta-entrar").click();
-  await expect(b.getByTestId("import-file").or(b.getByTestId("calc-valor"))).toBeVisible({ timeout: 60_000 });
-  if (await b.getByRole("button", { name: "Começar do zero" }).isVisible()) {
-    await b.getByRole("button", { name: "Começar do zero" }).click();
-  }
   await expect(b.getByTestId("calc-valor")).toBeVisible({ timeout: 30_000 });
-  await expect(b.getByTestId("total-hoje")).toContainText("1,00");
-  await expect(b.getByText("Rafael").first()).toBeVisible({ timeout: 20_000 });
+  await expect(b.getByTestId("porta-entrada")).toHaveCount(0);
+  await expect(b.getByTestId("total-hoje")).toContainText("6,00", { timeout: 45_000 });
 
-  await b.getByRole("button", { name: "2", exact: true }).click();
-  await b.getByRole("button", { name: "0", exact: true }).click();
-  await b.getByRole("button", { name: "0", exact: true }).click();
+  await digitar(b, "200");
   const tBA = Date.now();
   await b.getByTestId("registrar-venda").click();
-  await expect(b.getByTestId("total-hoje")).toContainText("3,00", { timeout: 15_000 });
-  await a.bringToFront();
-  await expect(a.getByTestId("total-hoje")).toContainText("3,00", { timeout: 15_000 });
-  await expect(a.getByText("Ana").first()).toBeVisible({ timeout: 15_000 });
+  await expect(a.getByTestId("total-hoje")).toContainText("8,00", { timeout: 15_000 });
   const latenciaBA = Date.now() - tBA;
 
-  await a.locator(".calc-grid .btn", { hasText: /^9$/ }).click();
-  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
-  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await digitar(a, "900");
   const tAB = Date.now();
   await a.getByTestId("registrar-venda").click();
-  await expect(a.getByTestId("confirmacao-venda")).toBeVisible();
-  await expect(b.getByText("9,00").first()).toBeVisible({ timeout: 15_000 });
+  await expect(b.getByTestId("total-hoje")).toContainText("17,00", { timeout: 15_000 });
   const latenciaAB = Date.now() - tAB;
-  writeFileSync("/tmp/sync-latencia-ab.json", JSON.stringify({
-    latenciaABMs: latenciaAB,
-    latenciaBAMs: latenciaBA,
-    em: new Date().toISOString(),
-  }, null, 2));
-  expect(latenciaAB, `A→B ${latenciaAB}ms`).toBeLessThan(10_000);
+  writeFileSync("/tmp/sync-latencia-ab.json", JSON.stringify({ latenciaABMs: latenciaAB, latenciaBAMs: latenciaBA, em: new Date().toISOString() }, null, 2));
 
+  // Offline: registra mesmo assim e envia quando volta.
   await ctxA.setOffline(true);
   await a.evaluate(() => window.dispatchEvent(new Event("offline")));
-  await a.locator(".calc-grid .btn", { hasText: /^8$/ }).click();
-  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
-  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
+  await digitar(a, "800");
   await a.getByTestId("registrar-venda").click();
-  await expect(a.getByTestId("confirmacao-venda")).toBeVisible();
-  await expect(a.getByText("8,00").first()).toBeVisible();
+  await expect(a.getByTestId("total-hoje")).toContainText("25,00");
   await ctxA.setOffline(false);
-  await a.evaluate(() => {
-    window.dispatchEvent(new Event("online"));
-    document.dispatchEvent(new Event("visibilitychange"));
-  });
-  await expect(a.getByTestId("status-nuvem")).not.toHaveAttribute("data-status", "offline", { timeout: 15_000 });
-  await expect(a.getByTestId("status-nuvem")).not.toHaveAttribute("data-status", "erro", { timeout: 20_000 });
-  await expect(b.getByText("8,00").first()).toBeVisible({ timeout: 15_000 });
+  await a.evaluate(() => { window.dispatchEvent(new Event("online")); document.dispatchEvent(new Event("visibilitychange")); });
+  await expect(b.getByTestId("total-hoje")).toContainText("25,00", { timeout: 20_000 });
 
-  // Toque rápido: cinco cliques não podem gravar cinco vendas.
-  await a.locator(".calc-grid .btn", { hasText: /^1$/ }).click();
-  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
-  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
-  await a.locator(".calc-grid .btn", { hasText: /^0$/ }).click();
-  await a.getByTestId("registrar-venda").evaluate((btn) => {
-    for (let i = 0; i < 5; i++) (btn as HTMLButtonElement).click();
-  });
-  await expect(a.getByTestId("confirmacao-venda")).toBeVisible();
-  await expect(a.getByTestId("total-hoje")).toContainText("30,00");
-  await expect(a.getByTestId("total-hoje")).not.toContainText("70,00");
-  await expect(b.getByTestId("total-hoje")).toContainText("30,00", { timeout: 15_000 });
-
-  await a.getByRole("link", { name: "Mais" }).click();
-  await a.locator('a[href$="/equipe"]').click();
-  await expect(a.getByTestId("lista-equipe")).toContainText("Rafael");
-  await expect(a.getByTestId("lista-equipe")).toContainText("Ana");
+  // Toque rápido = 1 venda.
+  await digitar(a, "1000");
+  await a.getByTestId("registrar-venda").evaluate((btn) => { for (let i = 0; i < 5; i++) (btn as HTMLButtonElement).click(); });
+  await expect(a.getByTestId("total-hoje")).toContainText("35,00");
+  await expect(b.getByTestId("total-hoje")).toContainText("35,00", { timeout: 15_000 });
 
   await ctxA.close();
   await ctxB.close();

@@ -1,7 +1,7 @@
 {
   "name": "controle-de-vendas",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.9.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,7 @@
     "cap:sync": "npm run build:capacitor && npx cap sync android",
     "test:rules": "vitest run --config vitest.rules.config.ts",
     "test:e2e:nuvem": "npm run test:e2e:nuvem:run",
-    "test:e2e:nuvem:run": "VITE_LOJA_NUVEM_ID=teste-e2e-190 vite build --outDir /tmp/cv-dist-nuvem && playwright test -c playwright.nuvem.config.ts"
+    "test:e2e:nuvem:run": "VITE_LOJA_NUVEM_ID=teste-e2e-191 vite build --outDir /tmp/cv-dist-nuvem && playwright test -c playwright.nuvem.config.ts"
   },
   "dependencies": {
     "@capacitor-mlkit/barcode-scanning": "^8.2.2",

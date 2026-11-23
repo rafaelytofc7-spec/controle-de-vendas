@@ -38,7 +38,7 @@ import { enviarPendentes, estadoEquipeLocal, obterCursorSync, ouvirLoja, sincron
 import { isPermissionDenied, mensagemErroSync, rotuloOperacao } from "./lib/errosSync";
 import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
 import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
-import { entrarComNome, isNaoEMembroError, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
+import { entrarComNome, isNaoEMembroError, nomePadraoAparelho, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
 import { LOJA_NUVEM_ID } from "./lib/supabasePadrao";
 import { calcularReabastecimento } from "./lib/reabastecimento";
 import { acrescentarVendaAgregados, agregarVendas, type AgregadosVendas } from "./lib/agregados";
@@ -610,6 +610,43 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setCursorOuvir((atual) => (atual ? atual : (cursorEntrada ?? "")));
     return { primeiraVez: estadoPin.primeiraVez, codigoRecuperacao: estadoPin.codigoRecuperacao, retidosImportados };
   }, [firebaseCfg, recarregar, conferirParticipacao]);
+
+  // 1.9.1: entrada automática e silenciosa na loja (sem tela de nome).
+  const entrandoRef = useRef(false);
+  const [tentativaEntrada, setTentativaEntrada] = useState(0);
+  useEffect(() => {
+    if (!pronto || !firebaseCfg || !configValida(firebaseCfg)) return;
+    if (equipe && !precisaReentrarPin) return;
+    if (!online || entrandoRef.current) return;
+    entrandoRef.current = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    void (async () => {
+      try {
+        const salvo = ((await getMeta("meu_nome")) as string | undefined)?.trim();
+        const nome = salvo && salvo.length >= 2 ? salvo : nomePadraoAparelho();
+        await entrarNaNuvem(nome);
+        setErroSync(undefined);
+      } catch (e) {
+        setErroSync(`Sem conexão com a loja na nuvem: ${mensagemErroSync(e, "entrar na nuvem")} (tentando de novo sozinho)`);
+        timer = setTimeout(() => setTentativaEntrada((n) => n + 1), 30_000);
+      } finally {
+        entrandoRef.current = false;
+      }
+    })();
+    return () => { if (timer) clearTimeout(timer); };
+  }, [pronto, firebaseCfg, equipe, precisaReentrarPin, online, tentativaEntrada, entrarNaNuvem]);
+
+  // Instalação limpa: começa vazia e baixa o histórico da nuvem (sem tela inicial).
+  const iniciandoVazioRef = useRef(false);
+  useEffect(() => {
+    if (!pronto || temDados || iniciandoVazioRef.current) return;
+    iniciandoVazioRef.current = true;
+    void importarArquivo({
+      formato: "controle-de-vendas-backup", versao: 1, loja: "loja",
+      configuracao: { nome_loja: NOME_LOJA_PADRAO },
+      vendas: [], produtos: [], entregas: [], encomendas: [], cobrancas: [], reabastecimentos: [],
+    }).catch(() => { iniciandoVazioRef.current = false; });
+  }, [pronto, temDados, importarArquivo]);
 
   const recuperarLider = useCallback(async (nome: string, codigo: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");

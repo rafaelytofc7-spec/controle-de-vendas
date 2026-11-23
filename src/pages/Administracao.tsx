@@ -180,7 +180,7 @@ export function Administracao() {
       {aba === "acesso" && (
         <div className="card col">
           <h3>Código de recuperação</h3>
-          <p className="muted small">Só o Admin vê e renova este código. Ele recupera o papel de Admin se este aparelho for perdido. Não é preciso PIN: a equipe entra só com o nome.</p>
+          <p className="muted small">Só o Admin vê e renova este código. Ele recupera o papel de Admin se este aparelho for perdido. Não é preciso PIN: a equipe entra sozinha ao abrir o aplicativo.</p>
           {codigoMostrado ? (
             <p>Código de recuperação: <strong className="mono">{codigoMostrado}</strong></p>
           ) : (

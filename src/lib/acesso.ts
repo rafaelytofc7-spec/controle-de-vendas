@@ -188,3 +188,11 @@ export async function alterarNomeMembro(uid: string, nomeBruto: string): Promise
   if (!data) throw new Error("Essa pessoa não está na equipe.");
   await upsertMembro(membroFromRow(data as Record<string, unknown>));
 }
+
+/** Nome padrão do aparelho, ex.: "Caixa SM-A305GT". Editável depois em Ajustes. */
+export function nomePadraoAparelho(ua: string = typeof navigator !== "undefined" ? navigator.userAgent : ""): string {
+  const m = ua.match(/Android[^;]*;\s*([^;)]+?)(?:\s+Build\/|\))/i);
+  const modelo = (m?.[1] || "").replace(/\bwv\b/i, "").trim();
+  const nome = modelo && !/^linux|^u$|^k$/i.test(modelo) ? `Caixa ${modelo}` : "Caixa";
+  return nome.slice(0, 40);
+}

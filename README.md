@@ -38,7 +38,7 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 ## Ligar a nuvem
 
-A nuvem já vem configurada (projeto Supabase `controle-de-vendas`, região São Paulo). Na primeira abertura o aplicativo pede só o nome (é preciso ter internet nesta primeira vez). Se a loja já existe, quem entra vira membro. O Admin reivindica o papel com o código de recuperação e o próprio nome. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o código de recuperação, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail nem PIN compartilhado.
+A nuvem já vem configurada (projeto Supabase `controle-de-vendas`, região São Paulo). O aplicativo abre direto na venda e entra sozinho na loja como membro, sem tela de nome. Se não houver internet, funciona offline e tenta conectar de novo sozinho. O nome é opcional (Ajustes). O Admin reivindica o papel em Ajustes com o código de recuperação. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o código de recuperação, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail nem PIN compartilhado.
 
 O login anônimo precisa estar ligado no painel do Supabase (Authentication → Providers → Anonymous). O passo a passo está em [GUIA-FIREBASE.md](GUIA-FIREBASE.md) e no aplicativo, em **Mais → Ajustes → Guia**.
 

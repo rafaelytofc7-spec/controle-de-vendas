@@ -1,16 +1,16 @@
 # Nuvem compartilhada (Supabase)
 
-A nuvem já vem configurada neste aplicativo (projeto `controle-de-vendas`, região São Paulo). Não é preciso colar chave nem arquivo de configuração. A entrada é só com o nome: o acesso anônimo identifica o aparelho, e qualquer pessoa autenticada entra na loja compartilhada escrevendo o nome.
+A nuvem já vem configurada neste aplicativo (projeto `controle-de-vendas`, região São Paulo). Não é preciso colar chave nem arquivo de configuração. Não há tela de entrada: o acesso anônimo identifica o aparelho, que entra sozinho na loja compartilhada como membro. O nome é opcional (Ajustes).
 
 ## Login anônimo (obrigatório)
 
-No painel do projeto, abra **Authentication → Providers** e ligue **Anonymous**. Sem isso, o aplicativo não consegue entrar só com o nome.
+No painel do projeto, abra **Authentication → Providers** e ligue **Anonymous**. Sem isso, o aplicativo não consegue conectar à loja.
 
 Link direto: <https://supabase.com/dashboard/project/zmsertdphnhaontkojqa/auth/providers>
 
 ## Primeiro uso e outros aparelhos
 
-1. Instale o APK 1.9.0 ou abra o site atualizado.
+1. Instale o APK 1.9.1 ou abra o site atualizado.
 2. Confirme que o aparelho está online nesta primeira entrada.
 3. Escreva o seu nome e toque em **Entrar**. Se a loja já existe, você entra como membro. O histórico oficial já está na nuvem e aparece depois da entrada.
 4. O Admin (Rafael) reivindica o papel com **Tenho um código de recuperação** e o próprio nome. Anote o código de 8 caracteres e guarde fora do telefone.
