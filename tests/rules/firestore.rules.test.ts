@@ -227,4 +227,30 @@ describe("regras do Firestore (PIN anônimo, líder e loja compartilhada)", () =
       criadoPor: "importado", atualizadoPor: "importado",
     }));
   });
+
+  it("o membro atualiza só o próprio ultimoAcesso e o próprio nome", async () => {
+    await semearLoja();
+    await semRegras(async (db) => {
+      await setDoc(doc(db, "lojas", LOJA, "membros", "membro"), {
+        uid: "membro", nome: "Ana", papel: "membro", bloqueado: false,
+        ultimoAcesso: "2026-11-22T12:00:00.000Z", criado_em: "2026-11-22T12:00:00.000Z",
+      });
+    });
+    const membro = ctx("membro");
+    await assertSucceeds(setDoc(doc(membro, "lojas", LOJA, "membros", "membro"), {
+      ultimoAcesso: "2026-11-22T12:01:00.000Z",
+    }, { merge: true }));
+    await assertSucceeds(setDoc(doc(membro, "lojas", LOJA, "membros", "membro"), {
+      nome: "Ana Paula",
+    }, { merge: true }));
+    await assertFails(setDoc(doc(membro, "lojas", LOJA, "membros", "lider"), {
+      ultimoAcesso: "2026-11-22T12:01:00.000Z",
+    }, { merge: true }));
+    await assertFails(setDoc(doc(membro, "lojas", LOJA, "membros", "membro"), {
+      papel: "lider",
+    }, { merge: true }));
+    await assertFails(setDoc(doc(membro, "lojas", LOJA, "membros", "membro"), {
+      bloqueado: true,
+    }, { merge: true }));
+  });
 });

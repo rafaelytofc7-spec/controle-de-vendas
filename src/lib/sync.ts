@@ -69,7 +69,7 @@ export async function garantirMembro(loja: string, user: User): Promise<EstadoEq
   if (atual.bloqueado) {
     const estado: EstadoEquipe = { ehDono: false, ehLider: false, bloqueado: true, liderUid, meuNome: atual.nome ?? "" };
     await cacheEstado(estado);
-    throw new Error("Este aparelho foi bloqueado. Fale com o líder.");
+    throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
   }
   const agora = agoraIso();
   await setDoc(membroRef, { ultimoAcesso: agora }, { merge: true });

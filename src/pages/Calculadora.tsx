@@ -10,6 +10,9 @@ import { useConfirmar } from "../components/Dialogo";
 import { ListaVirtual } from "../components/ListaVirtual";
 import type { Venda } from "../lib/types";
 import { EstadoVazio } from "../components/EstadoVazio";
+import { Link } from "react-router-dom";
+import { encomendaAtrasada, statusDeEncomenda } from "../lib/encomendas";
+import { nomeDeRegistro } from "../lib/presenca";
 
 const CHAVES = [5, 10, 20, 50, 100];
 
@@ -44,13 +47,13 @@ const PainelTroco = memo(function PainelTroco({ valor }: { valor: number }) {
 });
 
 const ItemVendaHoje = memo(function ItemVendaHoje({
-  venda, onExcluir,
-}: { venda: Venda; onExcluir: (v: Venda) => void }) {
+  venda, onExcluir, autor,
+}: { venda: Venda; onExcluir: (v: Venda) => void; autor: string }) {
   return (
     <div className="item">
       <div>
         <div className="titulo">{formatarReais(venda.valor)}</div>
-        <div className="muted small">{formatarDataHora(venda.criado_em)}</div>
+        <div className="muted small">{formatarDataHora(venda.criado_em)} · <span className="autor">{autor}</span></div>
       </div>
       <button className="btn btn-sm btn-ghost" aria-label="Excluir venda" onClick={() => onExcluir(venda)}>✕</button>
     </div>
@@ -58,7 +61,7 @@ const ItemVendaHoje = memo(function ItemVendaHoje({
 });
 
 export function Calculadora() {
-  const { agregados, registrarVenda, excluirVenda, registrarCobranca, confirmarCobranca, cancelarCobranca, cobrancas } = useStore();
+  const { agregados, registrarVenda, excluirVenda, registrarCobranca, confirmarCobranca, cancelarCobranca, cobrancas, encomendas, membros } = useStore();
   const { confirmar, dialogo } = useConfirmar();
   const [digits, setDigits] = useState("");
   const [acumulado, setAcumulado] = useState<number | null>(null);
@@ -138,22 +141,34 @@ export function Calculadora() {
   }
 
   const dataHoje = new Date().toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+  const encomendasPendentes = encomendas.filter((e) => !e.excluido && statusDeEncomenda(e) === "pendente");
+  const encomendasAtrasadas = encomendasPendentes.filter((e) => encomendaAtrasada(e));
+
 
   return (
     <div className="calc-page">
       {dialogo}
-      <div className="kpi kpi-compact">
-        <div className="box">
-          <div className="lbl">Hoje</div>
+      <div className="uso-hoje">
+        <div className="total-hoje">
+          <div className="lbl">Total de hoje</div>
           <div className="v" data-testid="total-hoje">{formatarReais(hoje.total)}</div>
-          <div className="muted small">{hoje.quantidade} venda{hoje.quantidade === 1 ? "" : "s"}</div>
+          <div className="muted small" style={{ color: "rgba(255,255,255,.85)" }}>{hoje.quantidade} venda{hoje.quantidade === 1 ? "" : "s"} · ticket {formatarReais(hoje.ticketMedio)}</div>
         </div>
-        <div className="box">
-          <div className="lbl">Ticket</div>
-          <div className="v">{formatarReais(hoje.ticketMedio)}</div>
-          <div className="muted small">média do dia</div>
-        </div>
+        <Link to="/encomendas" className="btn btn-encomenda-rapida" data-testid="atalho-nova-encomenda">
+          Nova encomenda
+        </Link>
       </div>
+      {encomendasPendentes.length > 0 && (
+        <Link to="/encomendas" className="banner aviso-encomendas-home" data-testid="aviso-encomendas-home">
+          {encomendasAtrasadas.length > 0
+            ? `${encomendasAtrasadas.length} encomenda${encomendasAtrasadas.length === 1 ? "" : "s"} atrasada${encomendasAtrasadas.length === 1 ? "" : "s"}`
+            : `${encomendasPendentes.length} encomenda${encomendasPendentes.length === 1 ? "" : "s"} pendente${encomendasPendentes.length === 1 ? "" : "s"}`}
+          {encomendasAtrasadas.length > 0 && encomendasPendentes.length > encomendasAtrasadas.length
+            ? ` · ${encomendasPendentes.length - encomendasAtrasadas.length} pendente(s)`
+            : ""}
+          . Abrir lista
+        </Link>
+      )}
 
       <div className="calc-display">
         <div className="lbl">{operador ? `Conta ${operador}` : "Total da venda"} · {dataHoje}</div>
@@ -238,7 +253,7 @@ export function Calculadora() {
           altura={320}
           alturaLinha={76}
           vazio={<EstadoVazio icone="venda" titulo="Nenhuma venda hoje" texto="Use a calculadora acima e toque em Registrar venda." />}
-          render={(v) => <ItemVendaHoje venda={v} onExcluir={(x) => void pedirExclusao(x)} />}
+          render={(v) => <ItemVendaHoje venda={v} autor={nomeDeRegistro(v, membros)} onExcluir={(x) => void pedirExclusao(x)} />}
         />
       </div>
     </div>

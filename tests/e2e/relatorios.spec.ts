@@ -10,6 +10,7 @@ test("mostra o total de cada mês e o total geral", async ({ page }) => {
   await page.goto("./");
   await page.getByTestId("import-file").setInputFiles(ATUAL);
   await expect(page.getByTestId("calc-valor")).toBeVisible({ timeout: 90_000 });
+  await page.getByRole("link", { name: "Mais" }).click();
   await page.getByRole("link", { name: "Relatórios" }).click();
   await expect(page.getByTestId("relatorios")).toBeVisible();
   await expect(page.getByTestId("total-periodo")).toContainText("164.518,86");

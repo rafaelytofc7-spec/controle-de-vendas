@@ -9,8 +9,12 @@ Aplicativo de caixa, cardápio, entregas e livro de vendas. Funciona no celular 
 - Cardápio com promoções agendadas e compartilhamento pelo WhatsApp.
 - Entregas com situação (pendente, a caminho, entregue) e WhatsApp.
 - Encomendas, reabastecimento (custo e preço sugerido) e cobranças **manuais de teste**.
+- Cada venda mostra quem registrou (ou “importado”, no histórico antigo). Dá para filtrar e ver o total por pessoa no dia e no mês.
+- Tela Equipe, com quem está online (último acesso nos últimos 2 minutos) e quando cada pessoa foi vista.
+- Relatórios mensais em **Mais → Relatórios** (fora da barra principal).
 - Dados no aparelho (IndexedDB). Quando houver internet e você estiver autenticado, a sincronização é nos dois sentidos com o Cloud Firestore.
 - Backup por arquivo JSON e, se você configurar o Google, o botão “Salvar no Google Drive”.
+- O nome da loja se configura em **Mais → Ajustes**.
 
 Este aplicativo **não** envia cobranças reais para Stone ou PicPay e **não** guarda tokens de maquininha.
 
@@ -33,9 +37,9 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 ## Ligar a nuvem
 
-A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Abra **Mais → Ajustes → Nuvem**, informe o seu nome e o PIN da loja. O primeiro aparelho que entra vira o líder e define o PIN. Os outros entram com o mesmo PIN e um nome de exibição; todos usam o mesmo banco na nuvem. Só o líder gerencia a equipe, o PIN, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há cargos nem convite por e-mail.
+A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Abra **Mais → Ajustes → Nuvem**, informe o seu nome e o PIN da loja. O primeiro aparelho que entra vira o Admin e define o PIN. Os outros entram com o mesmo PIN e um nome de exibição; todos usam o mesmo banco na nuvem. Só o Admin gerencia a equipe, o PIN, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há cargos nem convite por e-mail.
 
-Antes de instalar a 1.5.0, publique as regras novas e ligue o acesso anônimo no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)).
+As regras do PIN e o acesso anônimo precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.6.0 usa as mesmas regras da 1.5.0.
 
 O detalhe está no aplicativo, em **Mais → Ajustes → Guia**, e no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Se quiser outro projeto Firebase, a tela Nuvem ainda aceita colar uma configuração alternativa.
 
@@ -51,6 +55,18 @@ npm run test:rules  # regras do Firestore (emulador)
 npm run build
 npm run test:e2e  # precisa do backup privado no caminho local de desenvolvimento
 ```
+
+## Telas
+
+As capturas usam um nome de loja genérico.
+
+![Início, com o total do dia e atalho de encomenda](docs/01-inicio.png)
+
+![Lista de vendas com o nome de quem registrou](docs/02-vendas.png)
+
+![Equipe, com quem está online](docs/03-equipe.png)
+
+![Encomendas](docs/04-encomendas.png)
 
 ## Licença
 

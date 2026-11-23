@@ -12,11 +12,13 @@ import { Cobrancas } from "./pages/Cobrancas";
 import { Ajustes } from "./pages/Ajustes";
 import { Administracao } from "./pages/Administracao";
 import { Mais } from "./pages/Mais";
+import { Equipe } from "./pages/Equipe";
+import { NOME_LOJA_PADRAO } from "./lib/marca";
 import { APP_VERSION, buscarVersaoRemota, temAtualizacao } from "./lib/versao";
 import { useEffect, useState } from "react";
 import { alternarTema, aplicarTema, lerTema, type Tema } from "./lib/tema";
 import { Icone } from "./components/Icone";
-import { encomendaAtrasada, textoEndereco, tipoDeEncomenda } from "./lib/encomendas";
+import { encomendaAtrasada } from "./lib/encomendas";
 
 const TITULOS: Record<string, { t: string; s: string }> = {
   "/": { t: "Nova venda", s: "Calculadora" },
@@ -28,6 +30,7 @@ const TITULOS: Record<string, { t: string; s: string }> = {
   "/estoque": { t: "Estoque", s: "Reabastecimento" },
   "/cobrancas": { t: "Cobranças", s: "Registros manuais" },
   "/mais": { t: "Mais", s: "Outras telas" },
+  "/equipe": { t: "Equipe", s: "Quem está online" },
   "/ajustes": { t: "Ajustes", s: "Loja, backup e nuvem" },
   "/admin": { t: "Administração", s: "Equipe e registro de atividades" },
 };
@@ -56,8 +59,19 @@ function Shell() {
   if (!pronto) {
     return (
       <div className="app">
-        <header className="header"><h1>Controle de Vendas</h1></header>
-        <main className="page"><p className="muted">Carregando…</p></main>
+        <header className="header">
+          <div className="header-marca">
+            <img className="logo-cesta" src={`${import.meta.env.BASE_URL}marca-cesta.png`} alt="" />
+            <div className="grow"><div className="sub">{NOME_LOJA_PADRAO}</div><h1>Controle de Vendas</h1></div>
+          </div>
+        </header>
+        <main className="page">
+          <div className="splash">
+            <img src={`${import.meta.env.BASE_URL}marca-cesta.png`} alt="" />
+            <p className="splash-loja">{NOME_LOJA_PADRAO}</p>
+            <p>Controle de Vendas</p>
+          </div>
+        </main>
       </div>
     );
   }
@@ -66,9 +80,12 @@ function Shell() {
   return (
     <div className="app">
       <header className="header">
-        <div className="grow">
-          <div className="sub">{config.nome_loja || meta.s}</div>
-          <h1>{meta.t}</h1>
+        <div className="header-marca">
+          <img className="logo-cesta" src={`${import.meta.env.BASE_URL}marca-cesta.png`} alt="" />
+          <div className="grow">
+            <div className="sub">{config.nome_loja || NOME_LOJA_PADRAO}</div>
+            <h1>{meta.t}</h1>
+          </div>
         </div>
         <button
           type="button"
@@ -100,6 +117,7 @@ function Shell() {
           <Route path="/estoque" element={<Estoque />} />
           <Route path="/cobrancas" element={<Cobrancas />} />
           <Route path="/mais" element={<Mais />} />
+          <Route path="/equipe" element={<Equipe />} />
           <Route path="/ajustes" element={<Ajustes />} />
           <Route path="/admin" element={<Administracao />} />
         </Routes>
@@ -112,10 +130,6 @@ function Shell() {
         <NavLink to="/caixa" className={({ isActive }) => isActive ? "active" : ""}>
           <span className="nav-ico"><Icone nome="caixa" size={20} /></span>
           Caixa
-        </NavLink>
-        <NavLink to="/relatorios" className={({ isActive }) => isActive ? "active" : loc.pathname.startsWith("/relatorios/") ? "active" : ""}>
-          <span className="nav-ico"><Icone nome="grafico" size={20} /></span>
-          Relatórios
         </NavLink>
         <NavLink to="/cardapio" className={({ isActive }) => isActive ? "active" : ""}>
           <span className="nav-ico"><Icone nome="cardapio" size={20} /></span>
@@ -145,18 +159,13 @@ export function App() {
 
 function BannerEncomendasAtrasadas() {
   const { encomendas } = useStore();
+  const loc = useLocation();
+  if (loc.pathname === "/" || loc.pathname.startsWith("/encomendas")) return null;
   const atrasadas = encomendas.filter((e) => encomendaAtrasada(e));
   if (atrasadas.length === 0) return null;
   return (
     <div className="banner erro aviso-atualizacao" data-testid="banner-encomendas-atrasadas">
-      <strong>{atrasadas.length === 1 ? "1 encomenda atrasada" : `${atrasadas.length} encomendas atrasadas`}</strong>
-      <div className="small">
-        {atrasadas.slice(0, 3).map((e) => {
-          const end = tipoDeEncomenda(e) === "entrega" ? textoEndereco(e.endereco_detalhe, e.endereco) : "";
-          return <div key={e.id}>{e.cliente} · {e.produto}{end ? ` · ${end}` : ""}{e.pago ? "" : " · a pagar"}</div>;
-        })}
-        {atrasadas.length > 3 ? <div>e mais {atrasadas.length - 3}…</div> : null}
-      </div>
+      {atrasadas.length === 1 ? "1 encomenda atrasada. " : `${atrasadas.length} encomendas atrasadas. `}
       <NavLink to="/encomendas" className="small">Ver encomendas</NavLink>
     </div>
   );

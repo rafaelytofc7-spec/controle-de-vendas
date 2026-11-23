@@ -45,7 +45,7 @@ export function Ajustes() {
   }, []);
 
   async function salvarLoja() {
-    if (!podeEditarLoja) { setAviso("Só o líder altera as configurações da loja."); return; }
+    if (!podeEditarLoja) { setAviso("Só o Admin altera as configurações da loja."); return; }
     await atualizarConfig({
       nome_loja: nome, telefone: tel, mensagem_cardapio: msg,
       taxa_entrega: Number(taxa.replace(",", ".")) || 0, observacoes: obs, loja: codigo.trim() || loja,
@@ -95,7 +95,7 @@ export function Ajustes() {
       const r = await entrarNaNuvem(nomePessoa, pin);
       setPin("");
       if (r.primeiraVez && r.codigoRecuperacao) {
-        setAviso(`Você é o líder desta loja. Anote o código de recuperação: ${r.codigoRecuperacao}. Ele aparece só agora neste aparelho. Sem ele, se este aparelho for perdido, não dá para retomar o papel de líder.`);
+        setAviso(`Você é o Admin desta loja. Anote o código de recuperação: ${r.codigoRecuperacao}. Ele aparece só agora neste aparelho. Sem ele, se este aparelho for perdido, não dá para retomar o papel de Admin.`);
       } else if (r.codigoRecuperacao) {
         setAviso("Entrou na loja compartilhada. Sincronize para receber e enviar os dados.");
       } else {
@@ -111,9 +111,9 @@ export function Ajustes() {
     try {
       await recuperarLider(nomePessoa, pin, codigoRec);
       setPin(""); setCodigoRec("");
-      setAviso("A liderança voltou para este aparelho. Anote de novo o código de recuperação guardado na Administração.");
+      setAviso("O papel de Admin voltou para este aparelho. Anote de novo o código de recuperação guardado na Administração.");
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "Não foi possível recuperar a liderança.");
+      setAviso(e instanceof Error ? e.message : "Não foi possível recuperar o papel de Admin.");
     } finally { setBusy(false); }
   }
 
@@ -160,8 +160,11 @@ export function Ajustes() {
       {tab === "loja" && (
         <div className="card col">
           <h3>Dados da loja</h3>
-          {!podeEditarLoja && <p className="muted">Só o líder altera as configurações da loja. Você continua usando o caixa, o cardápio e as entregas normalmente.</p>}
-          <label className="field">Nome da loja<input className="input" value={nome} disabled={!podeEditarLoja} onChange={(e) => setNome(e.target.value)} /></label>
+          {!podeEditarLoja && <p className="muted">Só o Admin altera as configurações da loja. Você continua usando o caixa, o cardápio e as entregas normalmente.</p>}
+          <label className="field">Nome da loja
+            <input className="input" value={nome} disabled={!podeEditarLoja} onChange={(e) => setNome(e.target.value)} />
+          </label>
+          <p className="muted small">Este nome aparece no topo do aplicativo, na tela inicial e no ícone de abertura. Qualquer Admin pode alterar.</p>
           <label className="field">WhatsApp / telefone<input className="input" value={tel} disabled={!podeEditarLoja} onChange={(e) => setTel(e.target.value)} /></label>
           <label className="field">Mensagem do cardápio<textarea className="input" value={msg} disabled={!podeEditarLoja} onChange={(e) => setMsg(e.target.value)} /></label>
           <label className="field">Taxa de entrega<input className="input num" value={taxa} disabled={!podeEditarLoja} onChange={(e) => setTaxa(e.target.value)} /></label>
@@ -196,7 +199,7 @@ export function Ajustes() {
       {tab === "nuvem" && (
         <div className="card col">
           <h3>Nuvem compartilhada</h3>
-          <p className="muted">A nuvem já vem configurada. O primeiro aparelho que entrar com o PIN se torna o líder e define a senha da loja. Os outros entram com o mesmo PIN e um nome de exibição. Todo mundo passa a usar o mesmo banco na nuvem.</p>
+          <p className="muted">A nuvem já vem configurada. O primeiro aparelho que entrar com o PIN se torna o Admin e define a senha da loja. Os outros entram com o mesmo PIN e um nome de exibição. Todo mundo passa a usar o mesmo banco na nuvem.</p>
           <p className="muted small">Só cole um JSON abaixo se quiser usar outro projeto Firebase. A configuração alternativa fica só neste aparelho.</p>
           <textarea className="input mono" value={cfgTxt} onChange={(e) => setCfgTxt(e.target.value)} placeholder='Substituição opcional: { "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }' />
           <div className="row wrap">
@@ -205,7 +208,7 @@ export function Ajustes() {
           </div>
           {configValida(firebaseCfg) && (
             <>
-              <p className="muted small">Projeto: {firebaseCfg?.projectId} · {online ? "online" : "offline"} · {usuario ? (equipe?.ehLider || ehDono ? `líder: ${equipe?.meuNome || usuario.displayName || "você"}` : `conectado: ${equipe?.meuNome || usuario.displayName || "aparelho"}`) : "não conectado"}</p>
+              <p className="muted small">Projeto: {firebaseCfg?.projectId} · {online ? "online" : "offline"} · {usuario ? (equipe?.ehLider || ehDono ? `Admin: ${equipe?.meuNome || usuario.displayName || "você"}` : `conectado: ${equipe?.meuNome || usuario.displayName || "aparelho"}`) : "não conectado"}</p>
               {syncando && <p className="muted">Sincronizando… {progressoSync ? `${progressoSync.fase} ${progressoSync.feito}/${progressoSync.total}` : ""}</p>}
               {erroSync && <div className="banner erro">{erroSync}</div>}
               {usuario && equipe ? (
@@ -213,7 +216,7 @@ export function Ajustes() {
                   <div className="row wrap">
                     <button className="btn btn-primary grow" disabled={!online || syncando} onClick={() => void tentarSync()}>Sincronizar agora</button>
                     <button className="btn grow" onClick={() => {
-                      if (!confirm("Sair deste aparelho cria uma nova identidade na próxima entrada. O líder deve guardar o código de recuperação antes. Continuar?")) return;
+                      if (!confirm("Sair deste aparelho cria uma nova identidade na próxima entrada. O Admin deve guardar o código de recuperação antes. Continuar?")) return;
                       if (firebaseCfg) void signOut(iniciarFirebase(firebaseCfg).auth);
                     }}>Sair deste aparelho</button>
                   </div>
@@ -255,7 +258,7 @@ export function Ajustes() {
           {([
             ["encomendaNova", "Nova encomenda (todos os aparelhos)"],
             ["encomendaAtrasada", "Encomenda atrasada e lembrete do horário"],
-            ["novoMembro", "Alguém novo entrou (só o líder)"],
+            ["novoMembro", "Alguém novo entrou (só o Admin)"],
             ["alteracaoOutro", "Venda ou edição feita por outra pessoa"],
             ["erroSync", "Falha na sincronização"],
             ["lembreteBackup", "Lembrete de backup (a cada 7 dias)"],
@@ -267,7 +270,7 @@ export function Ajustes() {
           {ehDono && (
             <>
               <hr style={{ border: 0, borderTop: "1px solid var(--linha)", margin: "8px 0" }} />
-              <p className="muted small">Como líder, você define o padrão para aparelhos novos. Cada pessoa ainda pode ligar ou desligar no próprio celular.</p>
+              <p className="muted small">Como Admin, você define o padrão para aparelhos novos. Cada pessoa ainda pode ligar ou desligar no próprio celular.</p>
               <button className="btn" onClick={() => void atualizarConfig({ notificacoes_padrao: prefsNotificacao }).then(() => setAviso("Padrão de avisos salvo na loja."))}>Usar estes avisos como padrão da loja</button>
             </>
           )}

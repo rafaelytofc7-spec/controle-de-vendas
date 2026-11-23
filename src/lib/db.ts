@@ -1,5 +1,6 @@
 import { deleteDB, openDB, type IDBPDatabase } from "idb";
 import { PREFS_NOTIFICACAO_PADRAO } from "./types";
+import { NOME_LOJA_PADRAO } from "./marca";
 import type {
   Atividade,
   Cobranca,
@@ -293,7 +294,7 @@ export async function exportarDados(): Promise<DadosNormalizados> {
     loja,
     configuracao: completarConfig((await obterConfig()) ?? {
       loja,
-      nome_loja: "Minha loja",
+      nome_loja: NOME_LOJA_PADRAO,
       telefone: "",
       mensagem_cardapio: "",
       taxa_entrega: 0,

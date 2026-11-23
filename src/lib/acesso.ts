@@ -153,7 +153,7 @@ export async function entrarComPin(nomeBruto: string, pin: string): Promise<Esta
   const membroSnap = await getDoc(membroRef);
   if (membroSnap.exists()) {
     const atual = membroSnap.data() as MembroLoja;
-    if (atual.bloqueado) throw new Error("Este aparelho foi bloqueado. Fale com o líder.");
+    if (atual.bloqueado) throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
     const membro: MembroLoja = { ...atual, nome, ultimoAcesso: agora };
     await setDoc(membroRef, { nome, ultimoAcesso: agora }, { merge: true });
     const estado: EstadoEquipe = {

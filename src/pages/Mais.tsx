@@ -3,18 +3,20 @@ import { useStore } from "../store";
 import { Icone } from "../components/Icone";
 
 const LINKS = [
-  { to: "/relatorios", t: "Relatórios", d: "Totais de cada mês, gráficos e comparação", icone: "grafico" },
-  { to: "/encomendas", t: "Encomendas", d: "Pedidos reservados", icone: "encomenda" },
+  { to: "/equipe", t: "Equipe", d: "Quem está online e quem registrou as vendas", icone: "admin" },
+  { to: "/encomendas", t: "Encomendas", d: "Pedidos reservados, entregas e lembretes", icone: "encomenda" },
   { to: "/estoque", t: "Estoque", d: "Reabastecimento e preço sugerido", icone: "estoque" },
   { to: "/cobrancas", t: "Cobranças", d: "Registros manuais de teste", icone: "cobranca" },
-  { to: "/ajustes", t: "Ajustes", d: "Loja, backup, Firebase e guia", icone: "ajustes" },
+  { to: "/ajustes", t: "Ajustes", d: "Loja, backup, nuvem e avisos", icone: "ajustes" },
 ];
 
 export function Mais() {
   const { ehDono } = useStore();
-  const itens = ehDono
-    ? [...LINKS, { to: "/admin", t: "Administração", d: "Equipe, atividades, faturamento e loja", icone: "admin" }]
-    : LINKS;
+  const itens = [
+    ...LINKS,
+    ...(ehDono ? [{ to: "/admin", t: "Administração", d: "Equipe, PIN, atividades e loja", icone: "admin" }] : []),
+    { to: "/relatorios", t: "Relatórios", d: "Totais de cada mês, gráficos e comparação", icone: "grafico" },
+  ];
   return (
     <div className="stack">
       {itens.map((l) => (

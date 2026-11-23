@@ -18,6 +18,7 @@ import type { EnderecoEncomenda, FormaPagamentoEncomenda, StatusEncomenda, TipoE
   VerificacaoImportacao,
 } from "./types";
 import { AUTOR_IMPORTADO, PREFS_NOTIFICACAO_PADRAO } from "./types";
+import { NOME_LOJA_PADRAO } from "./marca";
 import { calcularReabastecimento } from "./reabastecimento";
 
 const TOKEN_KEYS = /^(token|secret|senha|password|access_token|api_key|apikey|refresh_token|client_secret|private_key)$/i;
@@ -298,7 +299,7 @@ export function normalizarConfig(cfg: Record<string, unknown> | undefined, loja:
   const c = cfg ? limparSegredos(cfg) : {};
   return {
     loja,
-    nome_loja: str(c.nome_loja ?? c.nomeLoja, "Minha loja"),
+    nome_loja: str(c.nome_loja ?? c.nomeLoja, NOME_LOJA_PADRAO),
     telefone: str(c.telefone),
     mensagem_cardapio: str(c.mensagem_cardapio ?? c.mensagemCardapio),
     taxa_entrega: arredondar2(num(c.taxa_entrega ?? c.taxaEntrega)),

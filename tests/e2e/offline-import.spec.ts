@@ -8,7 +8,7 @@ test("importa o backup e funciona offline no IndexedDB", async ({ page, context 
   test.skip(!existsSync(OFICIAL), "arquivo de importação privada ausente");
   test.setTimeout(180_000);
   await page.goto("./");
-  await expect(page.getByRole("heading", { name: "Controle de Vendas" })).toBeVisible();
+  await expect(page.locator(".header h1")).toHaveText("Controle de Vendas");
   await page.getByTestId("import-file").setInputFiles(OFICIAL);
 
   // After a successful import the first-run screen closes and the cash register opens.

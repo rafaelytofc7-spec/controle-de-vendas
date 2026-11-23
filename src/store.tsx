@@ -30,9 +30,12 @@ import {
 } from "./lib/db";
 import { agoraIso } from "./lib/datas";
 import { gerarId, montarBackup, normalizarBackup, parseBackup, verificarBackupOficial, type DadosNormalizados } from "./lib/importacao";
+import { NOME_LOJA_PADRAO } from "./lib/marca";
 import { PREFS_NOTIFICACAO_PADRAO, type EstadoEquipe, type Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FirebaseWebConfig, FormaCobranca, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
 import { configEfetiva, configValida, iniciarFirebase } from "./lib/firebase";
 import { estadoEquipeLocal, sincronizar, type ProgressoSync } from "./lib/sync";
+import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
+import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
 import { entrarComPin, recuperarLideranca } from "./lib/acesso";
 import { LOJA_NUVEM_ID } from "./lib/firebasePadrao";
 import { calcularReabastecimento } from "./lib/reabastecimento";
@@ -105,7 +108,7 @@ const Ctx = createContext<Store | null>(null);
 
 const cfgVazia = (loja: string): ConfiguracaoLoja => ({
   loja,
-  nome_loja: "Minha loja",
+  nome_loja: NOME_LOJA_PADRAO,
   telefone: "",
   mensagem_cardapio: "",
   taxa_entrega: 0,
@@ -550,6 +553,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (usuario && online && pronto && temDados) void tentarSync();
   }, [usuario, online, pronto, temDados]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!usuario || !online || !pronto || !temDados || !firebaseCfg) return;
+    let unsub: (() => void) | undefined;
+    try {
+      unsub = ouvirMembros((lista) => setMembros(lista));
+    } catch { /* ainda sem permissão ou firebase */ }
+    const pulsar = () => {
+      if (document.visibilityState !== "visible") return;
+      void atualizarPresenca(usuario.uid).then((em) => {
+        setMembros((xs) => xs.map((m) => m.uid === usuario.uid ? { ...m, ultimoAcesso: em } : m));
+      }).catch(() => { /* ainda não é membro, ou offline */ });
+    };
+    pulsar();
+    const id = window.setInterval(pulsar, INTERVALO_PRESENCA_MS);
+    document.addEventListener("visibilitychange", pulsar);
+    return () => {
+      unsub?.();
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", pulsar);
+    };
+  }, [usuario, online, pronto, temDados, firebaseCfg]);
+
 
   useEffect(() => {
     if (!pronto || !temDados) return;

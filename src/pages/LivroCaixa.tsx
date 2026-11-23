@@ -2,19 +2,20 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "../store";
 import { formatarReais } from "../lib/dinheiro";
-import { chaveSemana, diasDoMes, formatarDataHora, formatarDia, hojeChave, zonedParts } from "../lib/datas";
+import { chaveMes, chaveSemana, diasDoMes, formatarDataHora, formatarDia, hojeChave, zonedParts } from "../lib/datas";
 import { RESUMO_VAZIO, resumoOuVazio } from "../lib/agregados";
 import { ListaVirtual } from "../components/ListaVirtual";
 import { GraficoVendas } from "../components/GraficoVendas";
 import { EstadoVazio } from "../components/EstadoVazio";
-import { Icone } from "../components/Icone";
+import { nomeDeRegistro, totaisPorPessoa } from "../lib/presenca";
 
 const DOW = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 
 export function LivroCaixa() {
-  const { agregados } = useStore();
+  const { agregados, membros, vendas } = useStore();
   const hoje = hojeChave();
   const [sel, setSel] = useState(hoje);
+  const [pessoa, setPessoa] = useState<string>("todas");
   const parts = zonedParts(sel + "T12:00:00-03:00");
   const [ano, setAno] = useState(parts.year);
   const [mes, setMes] = useState(parts.month);
@@ -24,7 +25,15 @@ export function LivroCaixa() {
   const semana = resumoOuVazio(agregados.porSemana, chaveSemana(sel + "T12:00:00-03:00"));
   const mesR = resumoOuVazio(agregados.porMes, ym);
   const total = agregados.total ?? RESUMO_VAZIO;
-  const listaDia = agregados.porDiaLista.get(sel) ?? [];
+  const listaDiaBruta = agregados.porDiaLista.get(sel) ?? [];
+  const listaDia = pessoa === "todas" ? listaDiaBruta : listaDiaBruta.filter((v) => (v.criadoPor || "importado") === pessoa);
+  const diaFiltrado = { total: listaDia.reduce((a, v) => a + v.valor, 0), quantidade: listaDia.length };
+  const vendasHoje = vendas.filter((v) => !v.excluido && zonedParts(v.criado_em).chaveDia === hoje);
+  const vendasMes = vendas.filter((v) => !v.excluido && chaveMes(v.criado_em) === ym);
+  const porHoje = totaisPorPessoa(vendasHoje, membros);
+  const porMes = totaisPorPessoa(vendasMes, membros);
+  const pessoasFiltro = totaisPorPessoa(listaDiaBruta, membros);
+
 
   const dias = useMemo(() => diasDoMes(ano, mes), [ano, mes]);
   const primeiro = dias[0];
@@ -49,14 +58,6 @@ export function LivroCaixa() {
         <div className="box"><div className="lbl">Ticket médio</div><div className="v" data-testid="ticket-medio">{formatarReais(dia.ticketMedio)}</div><div className="muted small">do dia selecionado</div></div>
         <div className="box span"><div className="lbl">Total geral</div><div className="v" data-testid="total-geral">{formatarReais(total.total)}</div><div className="muted small" data-testid="qtd-geral">{total.quantidade.toLocaleString("pt-BR")} vendas · ticket médio {formatarReais(total.ticketMedio)}</div></div>
       </div>
-      <Link to="/relatorios" className="card link-card link-mais" data-testid="atalho-relatorios" style={{ margin: "12px 0" }}>
-        <span className="mais-ico"><Icone nome="grafico" size={22} /></span>
-        <div className="grow">
-          <h3>Relatórios mensais</h3>
-          <p className="muted">Total de cada mês, variação e o melhor dia</p>
-        </div>
-        <span className="mais-seta" aria-hidden="true">›</span>
-      </Link>
       <GraficoVendas porDia={agregados.porDia} />
       <div className="card">
         <div className="mes-nav">
@@ -81,24 +82,55 @@ export function LivroCaixa() {
         </div>
         <p className="muted small" style={{ marginTop: 10 }}>Selecionado: {formatarDia(sel + "T12:00:00-03:00")}</p>
       </div>
-      <div className="card">
-        <div className="row"><h3 className="grow">Vendas do dia</h3><strong>{formatarReais(dia.total)}</strong></div>
+      <div className="card" data-testid="vendas-do-dia">
+        <div className="row"><h3 className="grow">Vendas do dia</h3><strong>{formatarReais(pessoa === "todas" ? dia.total : diaFiltrado.total)}</strong></div>
+        {pessoasFiltro.length > 0 && (
+          <div className="filtro-pessoa" data-testid="filtro-pessoa">
+            <button type="button" className={pessoa === "todas" ? "btn btn-sm btn-primary" : "btn btn-sm"} onClick={() => setPessoa("todas")}>Todas</button>
+            {pessoasFiltro.map((p) => (
+              <button type="button" key={p.chave} className={pessoa === p.chave ? "btn btn-sm btn-primary" : "btn btn-sm"} onClick={() => setPessoa(p.chave)}>{p.nome}</button>
+            ))}
+          </div>
+        )}
         <ListaVirtual
           itens={listaDia}
           chave={(v) => v.id}
           altura={360}
-          alturaLinha={76}
+          alturaLinha={84}
           vazio={<EstadoVazio icone="venda" titulo="Nenhuma venda neste dia" texto="Toque em outro dia no calendário ou registre uma venda na calculadora." />}
           render={(v) => (
             <div className="item">
-              <div>
+              <div className="grow">
                 <div className="titulo">{formatarReais(v.valor)}</div>
-                <div className="muted small">{formatarDataHora(v.criado_em)}</div>
+                <div className="muted small">{formatarDataHora(v.criado_em)} · <span className="autor" data-testid="autor-venda">{nomeDeRegistro(v, membros)}</span></div>
               </div>
             </div>
           )}
         />
+        <div className="totais-pessoa" data-testid="totais-pessoa">
+          <h3 style={{ marginTop: 12 }}>Por pessoa</h3>
+          <p className="muted small">Totais de hoje e do mês, por quem registrou a venda.</p>
+          {(porHoje.length === 0 && porMes.length === 0) ? <p className="muted">Ainda não há vendas neste período.</p> : (
+            <ul className="lista">
+              {[...new Map([...porMes, ...porHoje].map((p) => [p.chave, p.nome])).entries()].map(([chave, nome]) => {
+                const h = porHoje.find((x) => x.chave === chave);
+                const m = porMes.find((x) => x.chave === chave);
+                return (
+                  <li key={chave} className="lista-item">
+                    <div className="grow">
+                      <strong>{nome}</strong>
+                      <div className="muted small">Hoje: {h ? `${h.quantidade} · ${formatarReais(h.total)}` : "—"} · Mês: {m ? `${m.quantidade} · ${formatarReais(m.total)}` : "—"}</div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
+      <p className="muted small" style={{ marginTop: 16, textAlign: "center" }}>
+        <Link to="/relatorios" data-testid="atalho-relatorios">Ver relatórios mensais</Link>
+      </p>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useStore } from "../store";
+import { NOME_LOJA_PADRAO } from "../lib/marca";
 
 export function PrimeiraExecucao() {
   const { importarArquivo } = useStore();
@@ -27,7 +28,7 @@ export function PrimeiraExecucao() {
         formato: "controle-de-vendas-backup",
         versao: 1,
         loja: "loja",
-        configuracao: { nome_loja: "Minha loja" },
+        configuracao: { nome_loja: NOME_LOJA_PADRAO },
         vendas: [], produtos: [], entregas: [], encomendas: [], cobrancas: [], reabastecimentos: [],
       });
     } catch (e) {
@@ -38,7 +39,12 @@ export function PrimeiraExecucao() {
 
   return (
     <div className="app">
-      <header className="header"><div><div className="sub">Primeiro uso</div><h1>Controle de Vendas</h1></div></header>
+      <header className="header">
+        <div className="header-marca">
+          <img className="logo-cesta" src={`${import.meta.env.BASE_URL}marca-cesta.png`} alt="" />
+          <div className="grow"><div className="sub">{NOME_LOJA_PADRAO}</div><h1>Controle de Vendas</h1></div>
+        </div>
+      </header>
       <main className="page">
         <div className="card">
           <h2>Começar com os seus dados</h2>

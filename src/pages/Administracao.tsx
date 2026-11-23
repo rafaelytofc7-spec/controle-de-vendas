@@ -48,7 +48,7 @@ export function Administracao() {
     return (
       <div className="card">
         <h3>Administração</h3>
-        <p className="muted">Só o líder da loja vê este painel. Entre com o PIN no aparelho do líder e sincronize.</p>
+        <p className="muted">Só o Admin da loja vê este painel. Entre com o PIN no aparelho do Admin e sincronize.</p>
       </div>
     );
   }
@@ -112,14 +112,14 @@ export function Administracao() {
   async function passarLideranca() {
     if (!alvoLider) return;
     const alvo = membros.find((m) => m.uid === alvoLider);
-    if (!confirm(`Passar a liderança para ${alvo?.nome || alvoLider}? Você deixa de ser o líder neste aparelho.`)) return;
+    if (!confirm(`Passar o papel de Admin para ${alvo?.nome || alvoLider}? Você deixa de ser o Admin neste aparelho.`)) return;
     setBusy(true); setAviso("");
     try {
       await transferirLideranca(alvoLider);
-      setAviso("Liderança transferida. Peça à pessoa para sincronizar neste e no outro aparelho.");
+      setAviso("Papel de Admin transferido. Peça à pessoa para sincronizar neste e no outro aparelho.");
       await recarregar();
     } catch (e) {
-      setAviso(e instanceof Error ? e.message : "Não foi possível transferir a liderança.");
+      setAviso(e instanceof Error ? e.message : "Não foi possível transferir o papel de Admin.");
     } finally { setBusy(false); }
   }
 
@@ -136,7 +136,7 @@ export function Administracao() {
         <button className={aba === "loja" ? "on" : ""} onClick={() => setAba("loja")}>Loja</button>
       </div>
       {aviso && <div className="banner">{aviso}</div>}
-      {!online && <p className="muted small">Conecte-se à internet para gerenciar a equipe, o PIN ou a liderança.</p>}
+      {!online && <p className="muted small">Conecte-se à internet para gerenciar a equipe, o PIN ou o papel de Admin.</p>}
 
       {aba === "equipe" && (
         <div className="card">
@@ -148,7 +148,7 @@ export function Administracao() {
                 <div className="grow">
                   <strong>{m.nome || m.uid.slice(0, 8)}</strong>
                   <div className="muted small">
-                    {m.uid === equipe?.liderUid || m.papel === "lider" ? "Líder · " : ""}
+                    {m.uid === equipe?.liderUid || m.papel === "lider" ? "Admin · " : ""}
                     {m.bloqueado ? "Bloqueado · " : ""}
                     Último acesso: {m.ultimoAcesso ? formatarDataHora(m.ultimoAcesso) : "ainda não entrou"}
                   </div>
@@ -174,11 +174,11 @@ export function Administracao() {
       {aba === "acesso" && (
         <div className="card col">
           <h3>PIN e recuperação</h3>
-          <p className="muted small">O PIN não fica gravado no aplicativo publicado. Só o líder altera. Ao trocar o PIN, um código de recuperação novo é gerado.</p>
+          <p className="muted small">O PIN não fica gravado no aplicativo publicado. Só o Admin altera. Ao trocar o PIN, um código de recuperação novo é gerado.</p>
           {codigoMostrado ? (
             <p>Código de recuperação: <strong className="mono">{codigoMostrado}</strong></p>
           ) : (
-            <p className="muted">Nenhum código de recuperação neste aparelho. Se você ainda é o líder original, o código foi mostrado na primeira entrada. Se perdeu, altere o PIN para gerar um novo.</p>
+            <p className="muted">Nenhum código de recuperação neste aparelho. Se você ainda é o Admin original, o código foi mostrado na primeira entrada. Se perdeu, altere o PIN para gerar um novo.</p>
           )}
           <label className="field">Novo PIN
             <input className="input" type="password" inputMode="numeric" autoComplete="new-password" value={pinNovo} onChange={(e) => setPinNovo(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="4 a 8 números" />
@@ -188,9 +188,9 @@ export function Administracao() {
           </label>
           <button className="btn btn-primary" disabled={busy || !online || !pinNovo} onClick={() => void trocarPin()}>Alterar PIN</button>
 
-          <h3 style={{ marginTop: 24 }}>Passar a liderança</h3>
+          <h3 style={{ marginTop: 24 }}>Passar o papel de Admin</h3>
           <p className="muted small">Escolha outra pessoa já na equipe. Depois da transferência, só ela gerencia membros e o PIN.</p>
-          <label className="field">Novo líder
+          <label className="field">Novo Admin
             <select className="input" value={alvoLider} onChange={(e) => setAlvoLider(e.target.value)}>
               <option value="">Selecione</option>
               {membros.filter((m) => m.uid !== meuUid && !m.bloqueado).map((m) => (
