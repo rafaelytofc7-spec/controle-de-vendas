@@ -57,12 +57,12 @@ const ItemVendaHoje = memo(function ItemVendaHoje({
   venda, onExcluir, autor,
 }: { venda: Venda; onExcluir: (v: Venda) => void; autor: string }) {
   return (
-    <div className="item">
+    <div className="item" data-testid={`venda-hoje-${venda.valor}`}>
       <div>
         <div className="titulo">{formatarReais(venda.valor)}</div>
         <div className="muted small">{formatarDataHora(venda.criado_em)} · <span className="autor">{autor}</span></div>
       </div>
-      <button className="btn btn-sm btn-ghost" aria-label="Excluir venda" onClick={() => onExcluir(venda)}>✕</button>
+      <button className="btn btn-sm btn-ghost" aria-label="Excluir venda" data-testid={`excluir-venda-${venda.id}`} onClick={() => onExcluir(venda)}>✕</button>
     </div>
   );
 });

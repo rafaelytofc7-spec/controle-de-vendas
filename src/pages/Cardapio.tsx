@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTravaToque } from "../components/useTravaToque";
 import { useDebounce } from "../lib/debounce";
 import { useStore } from "../store";
@@ -29,6 +29,8 @@ export function Cardapio() {
   const [codigos, setCodigos] = useState<string[]>([]);
   const [codigoNovo, setCodigoNovo] = useState("");
   const [erroCodigo, setErroCodigo] = useState("");
+  const precoRef = useRef<HTMLInputElement>(null);
+  const nomeRef = useRef<HTMLInputElement>(null);
 
   const lista = useMemo(() => {
     const q = buscaDeb.trim().toLowerCase();
@@ -52,13 +54,17 @@ export function Cardapio() {
   function parseN(s: string) { return Number(s.replace(/\./g, "").replace(",", ".")) || 0; }
 
   async function salvar() {
-    if (!nome.trim() || !edit) return;
+    const nomeEl = document.querySelector<HTMLInputElement>('[data-testid="produto-nome"]');
+    const precoEl = document.querySelector<HTMLInputElement>('[data-testid="produto-preco"]');
+    const nomeV = (nomeEl?.value ?? nomeRef.current?.value ?? nome).trim();
+    const precoV = precoEl?.value ?? precoRef.current?.value ?? preco;
+    if (!nomeV || !edit) return;
     if (!trava.comecar()) return;
     try {
     const id = edit === "novo" ? gerarId() : edit;
     const atual = produtos.find((p) => p.id === id);
     await salvarProduto({
-      id, nome: nome.trim(), preco: parseN(preco), unidade: unidade.trim() || null,
+      id, nome: nomeV, preco: parseN(precoV), unidade: unidade.trim() || null,
       ordem: atual?.ordem ?? (produtos.length + 1),
       criado_em: atual?.criado_em || agoraIso(),
       preco_promocional: promo ? parseN(promo) : null,
@@ -76,10 +82,9 @@ export function Cardapio() {
 
   return (
     <div>
-      {dialogo}
       <div className="row wrap search">
         <input className="input grow" placeholder="Buscar produto" value={busca} onChange={(e) => setBusca(e.target.value)} />
-        <button className="btn btn-primary" onClick={() => abrir("novo")}>Novo</button>
+        <button className="btn btn-primary" data-testid="novo-produto" onClick={() => abrir("novo")}>Novo</button>
       </div>
       <a className="btn btn-lima btn-block" href={linkWhatsapp(config.telefone, texto)} target="_blank" rel="noreferrer">Compartilhar cardápio no WhatsApp</a>
       <div className="lista" style={{ marginTop: 12 }}>
@@ -91,7 +96,7 @@ export function Cardapio() {
           />
         )}
         {lista.map((p) => (
-          <div className="item" key={p.id}>
+          <div className="item" key={p.id} data-testid={`produto-item-${p.nome}`}>
             <div className="grow">
               <div className="titulo">{p.nome} {p.unidade && <span className="muted small">/ {p.unidade}</span>}</div>
               <div>
@@ -110,9 +115,9 @@ export function Cardapio() {
         <div className="dialog-bg" onClick={() => setEdit(null)}>
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
             <h3>{edit === "novo" ? "Novo produto" : "Editar produto"}</h3>
-            <div className="col" style={{ marginTop: 10 }}>
-              <label className="field">Nome<input className="input" value={nome} onChange={(e) => setNome(e.target.value)} /></label>
-              <label className="field">Preço<input className="input num" value={preco} onChange={(e) => setPreco(e.target.value)} /></label>
+            <form className="col" style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
+              <label className="field">Nome<input className="input" data-testid="produto-nome" ref={nomeRef} defaultValue={nome} /></label>
+              <label className="field">Preço<input className="input num" data-testid="produto-preco" ref={precoRef} defaultValue={preco} /></label>
               <label className="field">Unidade<input className="input" value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="kg, un, bandeja..." /></label>
               <div className="field">
                 <span>Código de barras</span>
@@ -165,17 +170,18 @@ export function Cardapio() {
               <label className="field">Início da promo<input className="input" type="datetime-local" value={inicia} onChange={(e) => setInicia(e.target.value)} /></label>
               <label className="field">Fim da promo<input className="input" type="datetime-local" value={expira} onChange={(e) => setExpira(e.target.value)} /></label>
               <div className="row">
-                {edit !== "novo" && <button className="btn btn-danger" onClick={async () => {
+                {edit !== "novo" && <button type="button" className="btn btn-danger" data-testid="produto-excluir" onClick={async () => {
                   const ok = await confirmar({ titulo: "Excluir produto?", descricao: nome, confirmar: "Excluir", destrutivo: true });
                   if (ok && typeof edit === "string") { await excluirProduto(edit); setEdit(null); }
                 }}>Excluir</button>}
-                <button className="btn grow" onClick={() => setEdit(null)}>Cancelar</button>
-                <button className="btn btn-primary grow" disabled={trava.ocupado} onClick={() => void salvar()}>Salvar</button>
+                <button type="button" className="btn grow" onClick={() => setEdit(null)}>Cancelar</button>
+                <button type="submit" className="btn btn-primary grow" data-testid="produto-salvar" disabled={trava.ocupado}>Salvar</button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}
+      {dialogo}
     </div>
   );
 }

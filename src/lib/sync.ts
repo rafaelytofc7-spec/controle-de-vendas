@@ -601,73 +601,128 @@ function registroLocalDe(colecao: ColecaoDados, rec: Record<string, unknown>, lo
   return reabastecimentoFromRow(rec) as unknown as Record<string, unknown>;
 }
 
+export type OuvirLoja = {
+  parar: () => void;
+  religar: () => void;
+};
+
 export function ouvirLoja(
   loja: string,
   aoMudar: (mudanca?: MudancaNuvem) => void,
   onErro?: (e: Error) => void,
-  cursor?: string,
-): () => void {
+  onStatus?: (inscrito: boolean) => void,
+): OuvirLoja {
   const sb = getSupabase();
-  // Realtime does not send a full snapshot; listen even before a cursor exists.
-  const canais = TABELAS.map((col) => {
-    return sb
-      .channel(`loja:${loja}:${col}`)
+  const canais: ReturnType<typeof sb.channel>[] = [];
+  let morto = false;
+  let geracao = 0;
+  let religarTimer: ReturnType<typeof setTimeout> | undefined;
+  const inscritos = new Set<string>();
+  const total = TABELAS.length + 1;
+
+  const processar = (col: ColecaoDados, payload: { eventType?: string; new?: unknown; old?: unknown }) => {
+    void (async () => {
+      try {
+        const rec = ((payload.new ?? payload.old ?? {}) as Record<string, unknown>);
+        if (!rec || !rec.id) return;
+        const emRaw = rec.atualizado_em;
+        const em = typeof emRaw === "string" ? emRaw : (emRaw ? new Date(emRaw as string).toISOString() : undefined);
+        const local = await obterLocal(col, String(rec.id));
+        if (!local || maisNovo(local.atualizado_em, em) === "remoto" || payload.eventType === "DELETE") {
+          if (payload.eventType === "DELETE") {
+            const marked = { ...rec, excluido: true, atualizado_em: em || new Date().toISOString() };
+            await aplicarRemoto(col, marked, loja);
+            aoMudar({ colecao: col, registros: [registroLocalDe(col, marked, loja) as { id: string; excluido?: boolean; atualizado_em?: string }] });
+          } else {
+            await aplicarRemoto(col, rec, loja);
+            aoMudar({ colecao: col, registros: [registroLocalDe(col, rec, loja) as { id: string; excluido?: boolean; atualizado_em?: string }] });
+          }
+        }
+      } catch (e) {
+        onErro?.(e instanceof Error ? e : new Error(mensagemErroSync(e)));
+      }
+    })();
+  };
+
+  const limparCanais = () => {
+    for (const c of canais) void sb.removeChannel(c);
+    canais.length = 0;
+    inscritos.clear();
+  };
+
+  const ligar = () => {
+    if (morto) return;
+    if (religarTimer) { clearTimeout(religarTimer); religarTimer = undefined; }
+    geracao += 1;
+    const g = geracao;
+    limparCanais();
+    onStatus?.(false);
+
+    const aoStatus = (topic: string, status: string) => {
+      if (morto || g !== geracao) return;
+      if (status === "SUBSCRIBED") {
+        inscritos.add(topic);
+        if (inscritos.size >= total) onStatus?.(true);
+        return;
+      }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        inscritos.delete(topic);
+        onStatus?.(false);
+        if (status === "CHANNEL_ERROR") {
+          onErro?.(new Error(mensagemErroSync(new Error("canal"), "ouvir as alterações da loja")));
+        }
+        if (!religarTimer) {
+          religarTimer = setTimeout(() => { religarTimer = undefined; ligar(); }, 2000);
+        }
+      }
+    };
+
+    for (const col of TABELAS) {
+      const topic = `loja:${loja}:${col}:${g}`;
+      const ch = sb
+        .channel(topic)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: col, filter: `loja_id=eq.${loja}` },
+          (payload) => processar(col, payload),
+        )
+        .subscribe((status) => aoStatus(topic, status));
+      canais.push(ch);
+    }
+    const topicCfg = `loja:${loja}:configuracao:${g}`;
+    const canalCfg = sb
+      .channel(topicCfg)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: col, filter: `loja_id=eq.${loja}` },
+        { event: "*", schema: "public", table: "configuracao", filter: `loja_id=eq.${loja}` },
         (payload) => {
           void (async () => {
-            try {
-              const rec = (payload.new ?? payload.old ?? {}) as Record<string, unknown>;
-              if (!rec || !rec.id) return;
-              const emRaw = rec.atualizado_em;
-              const em = typeof emRaw === "string" ? emRaw : (emRaw ? new Date(emRaw as string).toISOString() : undefined);
-              if (em && cursor && em <= cursor && payload.eventType !== "DELETE") return;
-              const local = await obterLocal(col, String(rec.id));
-              if (!local || maisNovo(local.atualizado_em, em) === "remoto" || payload.eventType === "DELETE") {
-                if (payload.eventType === "DELETE") {
-                  const marked = { ...rec, excluido: true, atualizado_em: em || new Date().toISOString() };
-                  await aplicarRemoto(col, marked, loja);
-                  aoMudar({ colecao: col, registros: [registroLocalDe(col, marked, loja) as { id: string; excluido?: boolean; atualizado_em?: string }] });
-                } else {
-                  await aplicarRemoto(col, rec, loja);
-                  aoMudar({ colecao: col, registros: [registroLocalDe(col, rec, loja) as { id: string; excluido?: boolean; atualizado_em?: string }] });
-                }
-              }
-            } catch (e) {
-              onErro?.(e instanceof Error ? e : new Error(mensagemErroSync(e)));
+            const rec = payload.new as Record<string, unknown> | null;
+            if (!rec) return;
+            const remoto = configFromRow(rec);
+            const local = await obterConfig();
+            const eq = await estadoEquipeLocal();
+            const forcarRemoto = eq && !eq.ehDono && !eq.ehLider;
+            if (forcarRemoto || maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
+              await salvarConfig(remoto, false);
+              aoMudar();
             }
           })();
         },
       )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") onErro?.(new Error(mensagemErroSync(new Error("canal"), "ouvir as alterações da loja")));
-      });
-  });
-  const canalCfg = sb
-    .channel(`loja:${loja}:configuracao`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "configuracao", filter: `loja_id=eq.${loja}` },
-      (payload) => {
-        void (async () => {
-          const rec = payload.new as Record<string, unknown> | null;
-          if (!rec) return;
-          const remoto = configFromRow(rec);
-          const local = await obterConfig();
-          const eq = await estadoEquipeLocal();
-          const forcarRemoto = eq && !eq.ehDono && !eq.ehLider;
-          if (forcarRemoto || maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
-            await salvarConfig(remoto, false);
-            aoMudar();
-          }
-        })();
-      },
-    )
-    .subscribe();
-  return () => {
-    for (const c of canais) void sb.removeChannel(c);
-    void sb.removeChannel(canalCfg);
+      .subscribe((status) => aoStatus(topicCfg, status));
+    canais.push(canalCfg);
+  };
+
+  ligar();
+  return {
+    parar: () => {
+      morto = true;
+      if (religarTimer) clearTimeout(religarTimer);
+      limparCanais();
+      onStatus?.(false);
+    },
+    religar: () => ligar(),
   };
 }
 

@@ -35,7 +35,7 @@ const TITULOS: Record<string, { t: string; s: string }> = {
 };
 
 function Shell() {
-  const { pronto, temDados, config, bloqueado, equipe, statusNuvem, avisoImportados, erroSync, pendentesCount, precisaReentrarPin } = useStore();
+  const { pronto, temDados, config, bloqueado, equipe, statusNuvem, rotuloStatusNuvem, avisoImportados, erroSync, precisaReentrarPin } = useStore();
   const loc = useLocation();
   const meta = loc.pathname.startsWith("/relatorios/")
     ? { t: "Relatório do mês", s: "Totais por dia" }
@@ -55,15 +55,6 @@ function Shell() {
     return () => ac.abort();
   }, []);
 
-  const rotuloStatus = statusNuvem === "offline"
-    ? "Offline"
-    : statusNuvem === "sincronizando"
-      ? "Sincronizando…"
-      : statusNuvem === "erro"
-        ? "Erro na sincronização"
-        : statusNuvem === "pendente"
-          ? (pendentesCount === 1 ? "A enviar (1)" : `A enviar (${pendentesCount})`)
-          : "Sincronizado";
 
   if (!pronto) {
     return (
@@ -102,12 +93,9 @@ function Shell() {
             aria-label={tema === "escuro" ? "Usar tema claro" : "Usar tema escuro"}
             onClick={() => setTema(alternarTema())}
           >{tema === "escuro" ? "Claro" : "Escuro"}</button>
-          {erroSync && <div className="small" data-testid="erro-sync" style={{ textAlign: "right", color: "var(--tomate-2)" }}>{erroSync}</div>}
+          {erroSync && <div className="small" data-testid="erro-sync" style={{ textAlign: "right", color: "var(--tomate-2)" }}>{String(erroSync)}</div>}
           <div className="small status-nuvem" data-testid="status-nuvem" data-status={statusNuvem}>
-            {rotuloStatus}
-            {pendentesCount > 0 && statusNuvem !== "pendente" && (
-              <div data-testid="pendentes-sync">Pendentes: {pendentesCount}</div>
-            )}
+            {rotuloStatusNuvem}
             <div>v{APP_VERSION}</div>
           </div>
         </div>

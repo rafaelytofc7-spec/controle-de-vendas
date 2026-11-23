@@ -10,7 +10,7 @@ Link direto: <https://supabase.com/dashboard/project/zmsertdphnhaontkojqa/auth/p
 
 ## Primeiro uso e outros aparelhos
 
-1. Instale o APK 1.9.1 ou abra o site atualizado.
+1. Instale o APK 1.9.2 ou abra o site atualizado.
 2. Confirme que o aparelho está online nesta primeira entrada.
 3. Escreva o seu nome e toque em **Entrar**. Se a loja já existe, você entra como membro. O histórico oficial já está na nuvem e aparece depois da entrada.
 4. O Admin (Rafael) reivindica o papel com **Tenho um código de recuperação** e o próprio nome. Anote o código de 8 caracteres e guarde fora do telefone.

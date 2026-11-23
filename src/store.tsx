@@ -34,7 +34,8 @@ import { gerarId, montarBackup, normalizarBackup, parseBackup, verificarBackupOf
 import { NOME_LOJA_PADRAO } from "./lib/marca";
 import { PREFS_NOTIFICACAO_PADRAO, type EstadoEquipe, type Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FormaCobranca, SupabaseWebConfig, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
 import { configEfetiva, configValida, iniciarSupabase } from "./lib/supabase";
-import { enviarPendentes, estadoEquipeLocal, obterCursorSync, ouvirLoja, sincronizar, type MudancaNuvem, type ProgressoSync } from "./lib/sync";
+import { enviarPendentes, estadoEquipeLocal, obterCursorSync, ouvirLoja, sincronizar, type MudancaNuvem, type OuvirLoja, type ProgressoSync } from "./lib/sync";
+import { estadoStatusNuvem, rotuloStatusNuvem } from "./lib/statusNuvem";
 import { isPermissionDenied, mensagemErroSync, rotuloOperacao } from "./lib/errosSync";
 import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
 import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
@@ -99,7 +100,9 @@ interface Store {
   precisaReentrarPin: boolean;
   nomeReingresso: string;
   tentarSync: () => Promise<void>;
-  statusNuvem: "offline" | "sincronizando" | "sincronizado" | "pendente" | "erro";
+  statusNuvem: "offline" | "enviando" | "sincronizado";
+  rotuloStatusNuvem: string;
+  pendentesVendas: number;
   avisoImportados?: string;
   entrarNaNuvem: (nome: string) => Promise<{ primeiraVez: boolean; codigoRecuperacao?: string; retidosImportados?: number }>;
   recuperarLider: (nome: string, codigo: string) => Promise<void>;
@@ -146,6 +149,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [progressoSync, setProgressoSync] = useState<ProgressoSync>();
   const [erroSync, setErroSync] = useState<string>();
   const [pendentesCount, setPendentesCount] = useState(0);
+  const [pendentesVendas, setPendentesVendas] = useState(0);
+  const [canalInscrito, setCanalInscrito] = useState(false);
   const [ultimoSync, setUltimoSync] = useState<string>();
   const [cursorOuvir, setCursorOuvir] = useState<string | null>(null);
   const [precisaReentrarPin, setPrecisaReentrarPin] = useState(false);
@@ -197,6 +202,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setPrefsNotificacao(prefs);
     const [pend, ult] = await Promise.all([listarPendentes(), getMeta<string>("ultimo_sync")]);
     setPendentesCount(pend.length);
+          setPendentesVendas(pend.filter((p) => p.colecao === "vendas").length);
     setUltimoSync(ult || undefined);
     setPronto(true);
   }, []);
@@ -731,8 +737,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const enviandoRef = useRef(false);
   const reenviarRef = useRef(false);
+  const aplicarContagemPendentes = (pend: Awaited<ReturnType<typeof listarPendentes>>) => {
+    setPendentesCount(pend.length);
+    setPendentesVendas(pend.filter((p) => p.colecao === "vendas").length);
+  };
   const enviarAgora = useCallback(() => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine) {
+      void listarPendentes().then(aplicarContagemPendentes).catch(() => undefined);
+      return;
+    }
     if (enviandoRef.current) {
       reenviarRef.current = true;
       return;
@@ -750,6 +763,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const resultado = await enviarPendentes(LOJA_NUVEM_ID, Boolean(eq?.ehDono || eq?.ehLider));
           const [pend, ult] = await Promise.all([listarPendentes(), getMeta<string>("ultimo_sync")]);
           setPendentesCount(pend.length);
+          setPendentesVendas(pend.filter((p) => p.colecao === "vendas").length);
           if (ult) setUltimoSync(ult);
           if (resultado.recusados.length) {
             const primeira = resultado.recusados[0];
@@ -773,6 +787,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           }
           const pend = await listarPendentes().catch(() => []);
           setPendentesCount(pend.length);
+          setPendentesVendas(pend.filter((p) => p.colecao === "vendas").length);
         }
       } finally {
         enviandoRef.current = false;
@@ -794,17 +809,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [usuario, online, pronto, temDados]); // eslint-disable-line
 
   useEffect(() => {
-    const aoVoltar = () => {
-      if (document.visibilityState === "visible" && usuario && navigator.onLine) void tentarSync();
+    if (!usuario) return;
+    const acordar = () => {
+      if (!navigator.onLine) return;
+      enviarAgora();
+      void tentarSync();
+      ouvirRef.current?.religar();
     };
-    const aoOnline = () => { if (usuario) void tentarSync(); };
+    const aoVoltar = () => { if (document.visibilityState === "visible") acordar(); };
+    const aoOnline = () => acordar();
     document.addEventListener("visibilitychange", aoVoltar);
     window.addEventListener("online", aoOnline);
+    let offApp: (() => void) | undefined;
+    void import("@capacitor/app").then(({ App }) => {
+      return App.addListener("appStateChange", (s) => { if (s.isActive) acordar(); });
+    }).then((h) => { offApp = () => { void h.remove(); }; }).catch(() => undefined);
+    // Fila: envia na hora ao voltar a rede e também num timer, como no app original.
+    const idFila = window.setInterval(() => { if (navigator.onLine) enviarAgora(); }, 15_000);
+    // Se o canal realtime não estiver inscrito, busca incremental a cada 12 s.
+    const idPoll = window.setInterval(() => {
+      if (navigator.onLine && !canalInscrito) void tentarSync();
+    }, 12_000);
     return () => {
       document.removeEventListener("visibilitychange", aoVoltar);
       window.removeEventListener("online", aoOnline);
+      offApp?.();
+      window.clearInterval(idFila);
+      window.clearInterval(idPoll);
     };
-  }, [usuario, tentarSync]);
+  }, [usuario, tentarSync, enviarAgora, canalInscrito]);
 
 
   const aplicarMudancaNuvem = useCallback((mudanca?: MudancaNuvem) => {
@@ -812,17 +845,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       void recarregar();
       return;
     }
-    if (mudanca.colecao === "vendas") {
-      setVendas((xs) => {
+    const aplicarLista = <T extends { id: string; excluido?: boolean }>(
+      setter: React.Dispatch<React.SetStateAction<T[]>>,
+      sort: (a: T, b: T) => number,
+    ) => {
+      setter((xs) => {
         const mapa = new Map(xs.map((x) => [x.id, x]));
         for (const r of mudanca.registros) {
-          const v = r as import("./lib/types").Venda;
-          if (v.excluido) mapa.delete(v.id);
-          else mapa.set(v.id, v);
+          const row = r as T;
+          if (row.excluido) mapa.delete(row.id);
+          else mapa.set(row.id, row);
         }
-        return [...mapa.values()].sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+        return [...mapa.values()].sort(sort);
       });
-      void listarPendentes().then((pend) => setPendentesCount(pend.length)).catch(() => undefined);
+    };
+    if (mudanca.colecao === "vendas") {
+      aplicarLista<import("./lib/types").Venda>(setVendas, (a, b) => b.criado_em.localeCompare(a.criado_em));
+      void listarPendentes().then((pend) => {
+        setPendentesCount(pend.length);
+        setPendentesVendas(pend.filter((p) => p.colecao === "vendas").length);
+      }).catch(() => undefined);
+      return;
+    }
+    if (mudanca.colecao === "produtos") {
+      aplicarLista<import("./lib/types").Produto>(setProdutos, (a, b) => (a.ordem - b.ordem) || a.nome.localeCompare(b.nome, "pt-BR"));
+      return;
+    }
+    if (mudanca.colecao === "encomendas") {
+      aplicarLista<import("./lib/types").Encomenda>(setEncomendas, (a, b) => b.criado_em.localeCompare(a.criado_em));
       return;
     }
     void recarregar();
@@ -837,11 +887,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return () => { cancel = true; };
   }, [usuario, pronto]);
 
+  const ouvirRef = useRef<OuvirLoja | undefined>(undefined);
   useEffect(() => {
-    if (!usuario || !pronto || !firebaseCfg || cursorOuvir === null || precisaReentrarPin) return;
-    let unsub: (() => void) | undefined;
+    if (!usuario || !pronto || !firebaseCfg || precisaReentrarPin) return;
+    let handle: OuvirLoja | undefined;
     try {
-      unsub = ouvirLoja(
+      handle = ouvirLoja(
         LOJA_NUVEM_ID,
         (mudanca) => { aplicarMudancaNuvem(mudanca); },
         (e) => {
@@ -849,15 +900,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           if (isPermissionDenied(e)) void conferirParticipacao(usuario.uid);
           else setErroSync(msg);
         },
-        cursorOuvir || undefined,
+        (ok) => setCanalInscrito(ok),
       );
+      ouvirRef.current = handle;
     } catch (e) {
       const msg = mensagemErroSync(e, rotuloOperacao("escuta"));
       if (isPermissionDenied(e) || isNaoEMembroError(e)) void conferirParticipacao(usuario.uid);
       else setErroSync(msg);
     }
-    return () => { unsub?.(); };
-  }, [usuario, pronto, firebaseCfg, cursorOuvir, aplicarMudancaNuvem, precisaReentrarPin, conferirParticipacao]);
+    return () => { handle?.parar(); if (ouvirRef.current === handle) ouvirRef.current = undefined; setCanalInscrito(false); };
+  }, [usuario, pronto, firebaseCfg, aplicarMudancaNuvem, precisaReentrarPin, conferirParticipacao]);
 
   useEffect(() => {
     if (!usuario || !online || !pronto || !temDados || !firebaseCfg || precisaReentrarPin) return;
@@ -905,15 +957,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, [vendas]);
 
-  const statusNuvem = !online
-    ? "offline" as const
-    : syncando
-      ? "sincronizando" as const
-      : erroSync
-        ? "erro" as const
-        : pendentesCount > 0
-          ? "pendente" as const
-          : "sincronizado" as const;
+  const statusNuvem = estadoStatusNuvem({ online, enviando: syncando || pendentesCount > 0 });
+  const textoStatusNuvem = rotuloStatusNuvem({ online, enviando: syncando, vendasAguardando: pendentesVendas });
 
 
   const value = useMemo<Store>(() => ({
@@ -921,13 +966,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, confirmarEncomenda, cancelarEncomenda, marcarPagamentoEncomenda, excluirEncomenda, prefsNotificacao, salvarPrefs,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, pendentesCount, ultimoSync, precisaReentrarPin, nomeReingresso, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, pendentesCount, ultimoSync, precisaReentrarPin, nomeReingresso, tentarSync, statusNuvem, rotuloStatusNuvem: textoStatusNuvem, pendentesVendas, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
     ehDono, bloqueado, membros, atividades, equipe, agregados,
   }), [pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, confirmarEncomenda, cancelarEncomenda, marcarPagamentoEncomenda, excluirEncomenda, prefsNotificacao, salvarPrefs,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, pendentesCount, ultimoSync, precisaReentrarPin, nomeReingresso, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, pendentesCount, ultimoSync, precisaReentrarPin, nomeReingresso, tentarSync, statusNuvem, textoStatusNuvem, pendentesVendas, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
     ehDono, bloqueado, membros, atividades, equipe, agregados]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

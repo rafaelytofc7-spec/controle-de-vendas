@@ -23,7 +23,7 @@ export function useConfirmar() {
         <p className="muted">{pedido.descricao}</p>
         <div className="row wrap" style={{ marginTop: 12 }}>
           <button className="btn grow" onClick={() => fechar(false)}>Cancelar</button>
-          <button className={`btn grow ${pedido.destrutivo ? "btn-danger solid" : "btn-primary"}`} onClick={() => fechar(true)}>{pedido.confirmar}</button>
+          <button className={`btn grow ${pedido.destrutivo ? "btn-danger solid" : "btn-primary"}`} data-testid="dialogo-confirmar" onClick={() => fechar(true)}>{pedido.confirmar}</button>
         </div>
       </div>
     </div>
