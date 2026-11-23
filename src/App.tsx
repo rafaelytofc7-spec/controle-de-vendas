@@ -92,16 +92,18 @@ function Shell() {
             <h1>{meta.t}</h1>
           </div>
         </div>
-        <button
-          type="button"
-          className="btn-tema"
-          aria-label={tema === "escuro" ? "Usar tema claro" : "Usar tema escuro"}
-          onClick={() => setTema(alternarTema())}
-        >{tema === "escuro" ? "Claro" : "Escuro"}</button>
-        {erroSync && <div className="small" data-testid="erro-sync" style={{ textAlign: "right", color: "var(--tomate-2)" }}>{erroSync}</div>}
-        <div className="small status-nuvem" data-testid="status-nuvem" data-status={statusNuvem} style={{ textAlign: "right", opacity: 0.9 }}>
-          {rotuloStatus}
-          <div>v{APP_VERSION}</div>
+        <div className="header-acoes">
+          <button
+            type="button"
+            className="btn-tema"
+            aria-label={tema === "escuro" ? "Usar tema claro" : "Usar tema escuro"}
+            onClick={() => setTema(alternarTema())}
+          >{tema === "escuro" ? "Claro" : "Escuro"}</button>
+          {erroSync && <div className="small" data-testid="erro-sync" style={{ textAlign: "right", color: "var(--tomate-2)" }}>{erroSync}</div>}
+          <div className="small status-nuvem" data-testid="status-nuvem" data-status={statusNuvem}>
+            {rotuloStatus}
+            <div>v{APP_VERSION}</div>
+          </div>
         </div>
       </header>
       {bloqueado && <div className="banner erro aviso-atualizacao">Sua conta está bloqueada nesta loja. Os dados locais continuam no aparelho, mas a nuvem não aceita alterações.</div>}
@@ -113,7 +115,7 @@ function Shell() {
           <a href={APK_RELEASE_URL} target="_blank" rel="noreferrer">Baixar o APK</a>
         </div>
       )}
-      <main className="page">
+      <main className={"page" + (loc.pathname === "/" ? " page-venda" : loc.pathname.startsWith("/encomendas") ? " page-encomendas" : "")}>
         <Routes>
           <Route path="/" element={<Calculadora />} />
           <Route path="/caixa" element={<LivroCaixa />} />

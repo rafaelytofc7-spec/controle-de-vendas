@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { encomendaAtrasada, statusDeEncomenda } from "../lib/encomendas";
 import { nomeDeRegistro } from "../lib/presenca";
 import { lerCodigoBarras } from "../lib/leitorCodigo";
+import { BotaoLeitor } from "../components/BotaoLeitor";
 import { interpretarLeituraVenda } from "../lib/codigoBarras";
 import { gerarId } from "../lib/importacao";
 import { agoraIso } from "../lib/datas";
@@ -228,6 +229,7 @@ export function Calculadora() {
         </Link>
       )}
 
+      <div className="venda-calc">
       <div className="calc-display">
         <div className="lbl">{operador ? `Conta ${operador}` : "Total da venda"} · {dataHoje}</div>
         <div className="valor" data-testid="calc-valor">{formatarReais(valor)}</div>
@@ -248,10 +250,12 @@ export function Calculadora() {
 
       <PainelTroco valor={valor} />
 
-      <div className="row wrap" style={{ margin: "12px 0" }}>
-        <button className="btn grow" onClick={limpar}>Limpar</button>
-        <button className="btn btn-lima grow" data-testid="ler-codigo-venda" onClick={() => void lerProduto()}>Ler código de barras</button>
-        <button className="btn btn-primary grow" data-testid="registrar-venda" disabled={valor <= 0} onClick={() => void registrar()}>Registrar venda</button>
+      <div className="acoes-venda">
+        <BotaoLeitor testId="ler-codigo-venda" onClick={() => void lerProduto()} />
+        <div className="acoes-venda-baixo">
+          <button className="btn grow" onClick={limpar}>Limpar</button>
+          <button className="btn btn-primary grow" data-testid="registrar-venda" disabled={valor <= 0} onClick={() => void registrar()}>Registrar venda</button>
+        </div>
       </div>
       {avisoScan && <p className="muted small" data-testid="aviso-scan">{avisoScan}</p>}
       {cadastroScan && (
@@ -273,7 +277,9 @@ export function Calculadora() {
           </div>
         </div>
       )}
+      </div>
 
+      <div className="venda-lado">
       <div className="card">
         <h3>Cobrança manual</h3>
         <p className="muted small">Somente registro local de teste. Não envia nada para Stone ou PicPay.</p>
@@ -334,6 +340,7 @@ export function Calculadora() {
           vazio={<EstadoVazio icone="venda" titulo="Nenhuma venda hoje" texto="Use a calculadora acima e toque em Registrar venda." />}
           render={(v) => <ItemVendaHoje venda={v} autor={nomeDeRegistro(v, membros)} onExcluir={(x) => void pedirExclusao(x)} />}
         />
+      </div>
       </div>
     </div>
   );

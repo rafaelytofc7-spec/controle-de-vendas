@@ -40,7 +40,7 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Na primeira abertura o aplicativo pede o nome e o PIN (é preciso ter internet nesta primeira vez). O primeiro aparelho vira o Admin; os outros entram com o mesmo PIN e um nome. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o PIN, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail.
 
-As regras do PIN e o acesso anônimo precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.7.0 usa as mesmas regras da 1.5.0.
+As regras do PIN e o acesso anônimo precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.7.1 usa as mesmas regras da 1.5.0.
 
 O detalhe está no aplicativo, em **Mais → Ajustes → Guia**, e no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Se quiser outro projeto Firebase, a tela Nuvem ainda aceita colar uma configuração alternativa.
 

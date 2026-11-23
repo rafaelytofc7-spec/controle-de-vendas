@@ -12,6 +12,7 @@ const PATHS: Record<string, string> = {
   grafico: "M3 3v18h18M7 14l4-4 4 4 6-6",
   check: "M20 6L9 17l-5-5",
   alerta: "M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01",
+  codigo: "M3 5v14M6 5v14M8 5v14M11 5v14M14 5v14M16 5v14M20 5v14",
 };
 
 export function Icone({ nome, size = 22, className }: { nome: string; size?: number; className?: string }) {

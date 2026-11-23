@@ -126,10 +126,10 @@ export function Encomendas() {
   }
 
   return (
-    <div>
+    <div className="pagina-encomendas">
       {dialogo}
-      <button className="btn btn-primary btn-block" onClick={() => abrir()}>Nova encomenda</button>
-      <div className="row wrap" style={{ marginTop: 10, gap: 6 }}>
+      <button className="btn btn-primary btn-block btn-nova-encomenda" onClick={() => abrir()}>Nova encomenda</button>
+      <div className="filtros-encomenda" role="tablist" aria-label="Filtrar encomendas">
         {([
           ["todas", "Todas"],
           ["a_pagar", "A pagar"],
@@ -140,7 +140,7 @@ export function Encomendas() {
           <button key={k} className={filtro === k ? "btn btn-sm btn-primary" : "btn btn-sm"} onClick={() => setFiltro(k)}>{rotulo}</button>
         ))}
       </div>
-      <div className="lista" style={{ marginTop: 12 }} data-testid="lista-encomendas">
+      <div className="lista lista-encomendas" data-testid="lista-encomendas">
         {lista.length === 0 && <EstadoVazio icone="encomenda" titulo={encomendas.length === 0 ? "Nenhuma encomenda" : "Nenhuma nesta lista"} texto="Reserve um pedido com cliente, telefone, data e forma de pagamento. Se for entrega, preencha o endereço." />}
         {lista.map((e) => {
           const st = statusDeEncomenda(e);
@@ -148,30 +148,38 @@ export function Encomendas() {
           const end = textoEndereco(e.endereco_detalhe, e.endereco);
           const mapa = tipo === "entrega" ? linkMapa(e.endereco_detalhe, e.endereco) : null;
           return (
-            <div className="item" key={e.id}>
-              <div className="grow">
-                <div className="titulo">{e.cliente} · {e.produto}</div>
-                <div><strong>{formatarReais(e.valor)}</strong> {badgePagamento(e)} {badgeStatus(e)} <span className="tag">{tipo === "entrega" ? "entrega" : "retirada"}</span></div>
-                <div className="muted small">
-                  {e.data_entrega ? `Para ${formatarDataHora(e.data_entrega)}` : formatarDataHora(e.criado_em)}
-                  {e.prazo_lembrete ? ` · lembrete ${formatarDataHora(e.prazo_lembrete)}` : ""}
-                  {st === "entregue" && e.concluido_em ? ` · entregue ${formatarDataHora(e.concluido_em)}${e.entregue_por_nome ? ` por ${e.entregue_por_nome}` : ""}` : ""}
-                  {e.pago && e.pago_por_nome ? ` · marcado pago por ${e.pago_por_nome}` : ""}
+            <article className="item card-encomenda" key={e.id}>
+              <div className="card-encomenda-topo">
+                <div className="grow">
+                  <h3 className="titulo">{e.cliente}</h3>
+                  <p className="card-encomenda-produto">{e.produto}</p>
                 </div>
-                {e.telefone && (
-                  <div className="muted small">
-                    Tel. {e.telefone}{" "}
-                    <a href={linkWhatsapp(e.telefone, `Olá ${e.cliente}, sobre a encomenda de ${e.produto}.`)} target="_blank" rel="noreferrer">WhatsApp</a>
-                  </div>
-                )}
-                {tipo === "entrega" && end && (
-                  <div className="muted small">
-                    {end}{" "}
-                    {mapa && <a href={mapa} target="_blank" rel="noreferrer">Abrir no mapa</a>}
-                  </div>
-                )}
+                <strong className="card-encomenda-valor">{formatarReais(e.valor)}</strong>
               </div>
-              <div className="col">
+              <div className="card-encomenda-selos">
+                {badgePagamento(e)}
+                {badgeStatus(e)}
+                <span className="tag">{tipo === "entrega" ? "entrega" : "retirada"}</span>
+              </div>
+              <div className="muted small card-encomenda-meta">
+                {e.data_entrega ? `Para ${formatarDataHora(e.data_entrega)}` : formatarDataHora(e.criado_em)}
+                {e.prazo_lembrete ? ` · lembrete ${formatarDataHora(e.prazo_lembrete)}` : ""}
+                {st === "entregue" && e.concluido_em ? ` · entregue ${formatarDataHora(e.concluido_em)}${e.entregue_por_nome ? ` por ${e.entregue_por_nome}` : ""}` : ""}
+                {e.pago && e.pago_por_nome ? ` · marcado pago por ${e.pago_por_nome}` : ""}
+              </div>
+              {e.telefone && (
+                <div className="muted small">
+                  Tel. {e.telefone}{" "}
+                  <a href={linkWhatsapp(e.telefone, `Olá ${e.cliente}, sobre a encomenda de ${e.produto}.`)} target="_blank" rel="noreferrer">WhatsApp</a>
+                </div>
+              )}
+              {tipo === "entrega" && end && (
+                <div className="muted small">
+                  {end}{" "}
+                  {mapa && <a href={mapa} target="_blank" rel="noreferrer">Abrir no mapa</a>}
+                </div>
+              )}
+              <div className="acoes-encomenda">
                 {st === "pendente" && (
                   <button className="btn btn-sm btn-primary" onClick={() => void confirmarEncomenda(e.id)}>Confirmar entrega</button>
                 )}
@@ -193,20 +201,24 @@ export function Encomendas() {
                   if (ok) await excluirEncomenda(e.id);
                 }}>Apagar</button>
               </div>
-            </div>
+            </article>
           );
         })}
       </div>
       {edit && (
-        <div className="dialog-bg" onClick={() => setEdit(false)}>
-          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="dialog-bg dialog-bg-encomenda" onClick={() => setEdit(false)}>
+          <div className="dialog dialog-encomenda" onClick={(e) => e.stopPropagation()}>
             <h3>{id ? "Editar encomenda" : "Nova encomenda"}</h3>
             {erro && <div className="banner erro" style={{ marginTop: 8 }}>{erro}</div>}
-            <div className="col" style={{ marginTop: 10 }}>
-              <label className="field">Cliente<input className="input" value={cliente} onChange={(e) => setCliente(e.target.value)} /></label>
-              <label className="field">Produto<input className="input" value={produto} onChange={(e) => setProduto(e.target.value)} /></label>
-              <label className="field">Valor<input className="input num" value={valor} onChange={(e) => setValor(e.target.value)} /></label>
-              <label className="field">Telefone / WhatsApp do cliente<input className="input" value={telefone} onChange={(e) => setTelefone(e.target.value)} inputMode="tel" placeholder="Obrigatório" /></label>
+            <div className="form-encomenda">
+              <div className="grade-form">
+                <label className="field">Cliente<input className="input" value={cliente} onChange={(e) => setCliente(e.target.value)} /></label>
+                <label className="field">Produto<input className="input" value={produto} onChange={(e) => setProduto(e.target.value)} /></label>
+              </div>
+              <div className="grade-form">
+                <label className="field">Valor<input className="input num" value={valor} onChange={(e) => setValor(e.target.value)} /></label>
+                <label className="field">Telefone / WhatsApp do cliente<input className="input" value={telefone} onChange={(e) => setTelefone(e.target.value)} inputMode="tel" placeholder="Obrigatório" /></label>
+              </div>
               <label className="field">Tipo
                 <select className="input" value={tipo} onChange={(e) => setTipo(e.target.value as TipoEncomenda)}>
                   <option value="retirada">Retirada</option>
@@ -214,15 +226,20 @@ export function Encomendas() {
                 </select>
               </label>
               {tipo === "entrega" && (
-                <>
-                  <label className="field">Rua<input className="input" value={rua} onChange={(e) => setRua(e.target.value)} /></label>
-                  <label className="field">Número<input className="input" value={numero} onChange={(e) => setNumero(e.target.value)} /></label>
+                <fieldset className="bloco-endereco">
+                  <legend>Endereço de entrega</legend>
+                  <div className="grade-form grade-rua">
+                    <label className="field field-rua">Rua<input className="input" value={rua} onChange={(e) => setRua(e.target.value)} /></label>
+                    <label className="field field-num">Número<input className="input" value={numero} onChange={(e) => setNumero(e.target.value)} /></label>
+                  </div>
                   <label className="field">Bairro<input className="input" value={bairro} onChange={(e) => setBairro(e.target.value)} /></label>
                   <label className="field">Ponto de referência<input className="input" value={referencia} onChange={(e) => setReferencia(e.target.value)} /></label>
-                </>
+                </fieldset>
               )}
-              <label className="field">Data<input className="input" type="date" value={dia} onChange={(e) => setDia(e.target.value)} /></label>
-              <label className="field">Horário<input className="input" type="time" value={horaEntrega} onChange={(e) => setHoraEntrega(e.target.value)} /></label>
+              <div className="grade-form">
+                <label className="field">Data<input className="input" type="date" value={dia} onChange={(e) => setDia(e.target.value)} /></label>
+                <label className="field">Horário<input className="input" type="time" value={horaEntrega} onChange={(e) => setHoraEntrega(e.target.value)} /></label>
+              </div>
               <label className="field">Lembrete (se ninguém confirmar a entrega)
                 <input className="input" type="time" value={horaLembrete} onChange={(e) => setHoraLembrete(e.target.value)} />
               </label>
@@ -237,7 +254,7 @@ export function Encomendas() {
               {pago && (
                 <label className="field">Valor pago (opcional)<input className="input num" value={valorPago} onChange={(e) => setValorPago(e.target.value)} /></label>
               )}
-              <div className="row">
+              <div className="row acoes-form">
                 <button className="btn grow" onClick={() => setEdit(false)}>Cancelar</button>
                 <button className="btn btn-primary grow" onClick={() => void salvar()}>Salvar</button>
               </div>

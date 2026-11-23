@@ -370,3 +370,269 @@ a.mes-card { text-decoration: none; color: inherit; display: block; position: re
 .leitor-video { width: 100%; height: 220px; object-fit: cover; border-radius: 14px; background: #111; margin: 8px 0; }
 .lista-codigos { list-style: none; margin: 0; padding: 0; }
 .lista-codigos code { font-weight: 800; }
+
+
+/* v1.7.1 — leitor, encomendas e layout que se adapta ao aparelho */
+html, body, #root { max-width: 100%; overflow-x: hidden; }
+.app, .page, .item, .card, .row, .grow, .header-marca, .dialog, .lista { min-width: 0; }
+img, svg, video, canvas, table { max-width: 100%; }
+.input, select.input, textarea.input, button { max-width: 100%; }
+.header {
+  padding-left: max(12px, env(safe-area-inset-left, 0px));
+  padding-right: max(12px, env(safe-area-inset-right, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+  gap: 8px;
+}
+.header-acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-width: 0;
+}
+.status-nuvem {
+  text-align: right;
+  opacity: 0.9;
+  font-size: 11px;
+  line-height: 1.25;
+  max-width: 9.5rem;
+  overflow: hidden;
+}
+.page {
+  padding-left: max(14px, env(safe-area-inset-left, 0px));
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+  padding-bottom: calc(var(--nav) + var(--safe-b) + 16px);
+  width: 100%;
+  max-width: 720px;
+}
+.uso-hoje .total-hoje .v { font-size: clamp(1.25rem, 6.4vw, 1.65rem); }
+.calc-display .valor { font-size: clamp(1.85rem, 11vw, 3.5rem); }
+.calc-grid .btn { min-height: clamp(48px, 14vw, 64px); font-size: clamp(1.1rem, 5vw, 1.4rem); }
+.btn-encomenda-rapida { min-width: 0; min-height: clamp(52px, 16vw, 72px); }
+
+.btn-leitor {
+  width: 100%;
+  min-height: clamp(52px, 13vw, 56px);
+  border-radius: 16px;
+  background: var(--ouro);
+  border-color: var(--ouro);
+  color: #1A1400;
+  font-weight: 800;
+  font-size: clamp(15px, 4.2vw, 17px);
+  letter-spacing: .01em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 2px 0 rgba(26, 20, 0, .12);
+  white-space: nowrap;
+}
+.btn-leitor:hover:not(:disabled) { filter: brightness(1.05); }
+.btn-leitor:active { transform: translateY(1px); }
+:root[data-tema="escuro"] .btn-leitor { color: #1A1400; background: var(--ouro); border-color: var(--ouro); }
+
+.acoes-venda { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
+.acoes-venda-baixo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.acoes-venda-baixo .btn { width: 100%; }
+
+.campo-codigo { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; width: 100%; }
+.campo-codigo-linha { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.campo-codigo-linha .input { min-width: 0; width: 100%; }
+
+.leitor-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: rgba(8, 14, 10, .82);
+  padding: max(12px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.leitor-palco {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.leitor-visor {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  max-height: min(42vh, 280px);
+  border-radius: 20px;
+  overflow: hidden;
+  background: #0a100c;
+}
+.leitor-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; margin: 0; border-radius: 0;
+}
+.leitor-mira { position: absolute; inset: 16%; pointer-events: none; }
+.leitor-mira .canto {
+  position: absolute; width: 28px; height: 28px;
+  border: 3px solid var(--ouro);
+}
+.leitor-mira .c1 { top: 0; left: 0; border-right: 0; border-bottom: 0; border-radius: 8px 0 0 0; }
+.leitor-mira .c2 { top: 0; right: 0; border-left: 0; border-bottom: 0; border-radius: 0 8px 0 0; }
+.leitor-mira .c3 { bottom: 0; left: 0; border-right: 0; border-top: 0; border-radius: 0 0 0 8px; }
+.leitor-mira .c4 { bottom: 0; right: 0; border-left: 0; border-top: 0; border-radius: 0 0 8px 0; }
+.leitor-status { color: #fff; font-weight: 700; text-align: center; margin: 0; text-shadow: 0 1px 2px rgba(0,0,0,.45); }
+.leitor-digitar { width: 100%; color: #fff; }
+.leitor-digitar .input { background: var(--papel); color: var(--carvao); }
+.leitor-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+.btn-leitor-ajustes { width: 100%; background: var(--ouro-clara); border-color: var(--ouro); color: #1A1400; font-weight: 800; }
+.leitor-modo-nativo .leitor-video { opacity: 0; }
+html.leitor-nativo-ativo,
+html.leitor-nativo-ativo body { background: transparent !important; }
+html.leitor-nativo-ativo .app { visibility: hidden; }
+html.leitor-nativo-ativo .leitor-overlay { background: transparent; }
+html.leitor-nativo-ativo .leitor-visor { background: transparent; }
+
+.pagina-encomendas { display: flex; flex-direction: column; gap: 12px; }
+.btn-nova-encomenda { min-height: clamp(48px, 12vw, 56px); }
+.filtros-encomenda {
+  display: flex; gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  padding: 2px 0 6px; scrollbar-width: thin;
+}
+.filtros-encomenda .btn { flex: none; }
+.lista-encomendas { margin-top: 0; gap: 12px; }
+.card-encomenda {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 14px;
+  border-radius: 18px;
+}
+.card-encomenda-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.card-encomenda-produto { margin: 2px 0 0; font-weight: 600; color: var(--cinza); }
+.card-encomenda-valor {
+  flex: none;
+  font-size: clamp(1.05rem, 4.6vw, 1.35rem);
+  font-variant-numeric: tabular-nums;
+  color: var(--folha-3);
+  text-align: right;
+}
+.card-encomenda-selos { display: flex; flex-wrap: wrap; gap: 6px; }
+.card-encomenda-meta { line-height: 1.4; overflow-wrap: anywhere; }
+.acoes-encomenda { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.acoes-encomenda .btn {
+  flex: 1 1 calc(50% - 8px);
+  min-width: min(100%, 140px);
+  white-space: normal;
+  text-align: center;
+}
+
+.dialog-bg { align-items: center; padding: max(12px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px)); }
+.dialog {
+  width: min(560px, 100%);
+  max-height: min(860px, calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.form-encomenda { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.grade-form { display: grid; grid-template-columns: 1fr; gap: 12px; }
+.bloco-endereco {
+  border: 1px solid var(--linha);
+  background: var(--creme);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+.bloco-endereco legend {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--folha-2);
+  padding: 0 6px;
+}
+.grade-rua { display: grid; grid-template-columns: minmax(0, 1fr) minmax(5.5rem, 7rem); gap: 10px; }
+.acoes-form { margin-top: 4px; }
+
+@media (min-width: 400px) {
+  .grade-form { grid-template-columns: 1fr 1fr; }
+  .grade-form > .field:only-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 360px) {
+  .page { padding-left: max(10px, env(safe-area-inset-left, 0px)); padding-right: max(10px, env(safe-area-inset-right, 0px)); }
+  .header h1 { font-size: 15px; }
+  .header .sub { font-size: 10px; }
+  .btn-tema { padding: 0 8px; font-size: 11px; }
+  .status-nuvem { max-width: 4.8rem; }
+  .nav a, .nav button { font-size: 10px; padding: 4px 0; }
+  .tabs, .tabs-admin { grid-template-columns: repeat(2, 1fr); }
+  .campo-codigo-linha { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .item:not(.card-encomenda) { flex-wrap: wrap; }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .uso-hoje { margin-bottom: 8px; }
+  .uso-hoje .total-hoje { padding: 8px 12px; }
+  .calc-grid .btn { min-height: 44px; font-size: 18px; }
+  .header { min-height: 48px; }
+  .leitor-visor { max-height: 36vh; }
+  .page { padding-top: 10px; }
+}
+
+@media (min-width: 800px) {
+  .page { max-width: 960px; padding-top: 24px; }
+  .calc-page {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .calc-page .uso-hoje,
+  .calc-page .aviso-encomendas-home { grid-column: 1 / -1; }
+  .dialog { max-width: 560px; }
+  .grade-form { grid-template-columns: 1fr 1fr; }
+}
+
+@media (min-width: 800px) and (orientation: landscape) {
+  .uso-hoje { grid-template-columns: 1fr auto; }
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow: hidden;
+  padding: 4px 0;
+}
+.chip { flex: 0 1 auto; min-width: 0; }
+.filtros-encomenda {
+  display: flex;
+  flex-wrap: wrap;
+  overflow: visible;
+}
+@media (max-width: 360px) {
+  .chip { padding: 8px 10px; font-size: 12px; }
+}
+
+.troco-card .chip-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  overflow: hidden;
+}
+.troco-card .chip {
+  width: 100%;
+  justify-content: center;
+  padding: 8px 2px;
+  font-size: clamp(11px, 3.2vw, 13px);
+}
+.btn[hidden], [hidden] { display: none !important; }
+.nav a, .nav button { white-space: nowrap; }
+@media (max-width: 320px) {
+  .uso-hoje { grid-template-columns: 1fr; }
+}

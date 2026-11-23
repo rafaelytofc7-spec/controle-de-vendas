@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 const PUBLICO = resolve("docs");
 const PRIVADO = resolve("/workspace/controle-vendas/screenshots");
 
-test.use({ viewport: { width: 390, height: 844 } });
+test.use({ viewport: { width: 390, height: 920 } });
 
 async function semear(page: import("@playwright/test").Page, nomeLoja: string) {
   await page.evaluate(async (nome) => {

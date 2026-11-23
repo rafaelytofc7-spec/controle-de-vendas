@@ -1,84 +1,29 @@
-import { BarcodeFormat } from "@capacitor-mlkit/barcode-scanning";
 import { ehNativo } from "./plataforma";
 
+/** String values of BarcodeFormat — keep this module free of a static plugin import. */
 const FORMATOS_NATIVOS = [
-  BarcodeFormat.Ean13,
-  BarcodeFormat.Ean8,
-  BarcodeFormat.UpcA,
-  BarcodeFormat.UpcE,
-  BarcodeFormat.Code128,
-  BarcodeFormat.Code39,
-  BarcodeFormat.Code93,
-  BarcodeFormat.Itf,
-  BarcodeFormat.QrCode,
-  BarcodeFormat.DataMatrix,
-];
+  "ean13",
+  "ean8",
+  "upcA",
+  "upcE",
+  "code128",
+  "code39",
+  "code93",
+  "itf",
+  "qrCode",
+  "dataMatrix",
+] as const;
+
+const START_SCAN_MS = 8_000;
 
 export async function lerCodigoBarras(): Promise<string | null> {
-  if (ehNativo()) {
-    try {
-      return await lerCodigoNativo();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/cancel|user|canceled|cancelled/i.test(msg)) return null;
-      // If the Play scanner module is missing, try the camera in the WebView.
-      try {
-        return await lerCodigoNaWeb();
-      } catch {
-        throw e instanceof Error ? e : new Error(msg);
-      }
-    }
-  }
-  return lerCodigoNaWeb();
-}
-
-async function lerCodigoNativo(): Promise<string | null> {
-  const { BarcodeScanner } = await import("@capacitor-mlkit/barcode-scanning");
-  const perm = await BarcodeScanner.requestPermissions();
-  if (perm.camera !== "granted" && perm.camera !== "limited") {
-    throw new Error("A câmera não foi autorizada. Autorize a câmera nas configurações do aparelho.");
-  }
-  try {
-    const disponivel = await BarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
-    if (!disponivel.available) {
-      await BarcodeScanner.installGoogleBarcodeScannerModule();
-    }
-  } catch {
-    // some devices have no Play module; scan() may still work or we'll fallback
-  }
-  const { barcodes } = await BarcodeScanner.scan({ formats: FORMATOS_NATIVOS });
-  const valor = barcodes.find((b) => b.rawValue)?.rawValue?.trim();
-  return valor || null;
-}
-
-export function lerCodigoNaWeb(): Promise<string | null> {
-  return new Promise((resolve, reject) => {
-    const raiz = document.createElement("div");
-    raiz.className = "leitor-overlay";
-    raiz.setAttribute("data-testid", "leitor-overlay");
-    raiz.innerHTML = `
-      <div class="leitor-caixa">
-        <h3>Ler código de barras</h3>
-        <p class="muted small">Aponte a câmera para o código. Você também pode digitá-lo.</p>
-        <video class="leitor-video" autoplay muted playsinline></video>
-        <p class="muted small leitor-status">Abrindo a câmera…</p>
-        <label class="field">Digitar o código
-          <input class="input" data-testid="leitor-digitado" inputmode="numeric" autocomplete="off" />
-        </label>
-        <div class="row wrap">
-          <button type="button" class="btn grow" data-acao="cancelar">Cancelar</button>
-          <button type="button" class="btn btn-primary grow" data-acao="usar" data-testid="leitor-usar">Usar código</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(raiz);
-    const video = raiz.querySelector("video") as HTMLVideoElement;
-    const status = raiz.querySelector(".leitor-status") as HTMLElement;
-    const input = raiz.querySelector("input") as HTMLInputElement;
-    let stream: MediaStream | undefined;
+  return new Promise((resolve) => {
+    const ui = montarOverlay();
     let encerrado = false;
-    let detector: { detect: (src: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>; stop?: () => void } | undefined;
+    let stream: MediaStream | undefined;
+    let detector: { stop?: () => void } | undefined;
     let timer = 0;
+    let nativoAtivo = false;
 
     const sair = (valor: string | null) => {
       if (encerrado) return;
@@ -86,67 +31,264 @@ export function lerCodigoNaWeb(): Promise<string | null> {
       window.clearInterval(timer);
       try { detector?.stop?.(); } catch { /* ignore */ }
       stream?.getTracks().forEach((t) => t.stop());
-      raiz.remove();
+      void pararNativo(nativoAtivo);
+      ui.remover();
       resolve(valor);
     };
 
-    raiz.querySelector('[data-acao="cancelar"]')?.addEventListener("click", () => sair(null));
-    raiz.querySelector('[data-acao="usar"]')?.addEventListener("click", () => {
-      const v = input.value.trim();
-      if (v) sair(v);
-    });
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && input.value.trim()) sair(input.value.trim());
-    });
-
-    const onCodigo = (valor: string) => {
-      if (valor.trim()) sair(valor.trim());
-    };
+    ui.onCancel(() => sair(null));
+    ui.onUsar((v) => { if (v) sair(v); });
+    ui.onAjustes(() => { void abrirAjustes(); });
 
     void (async () => {
-      try {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          status.textContent = "Este aparelho não liberou a câmera. Digite o código abaixo.";
-          input.focus();
-          return;
-        }
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
+      if (ehNativo()) {
+        const r = await iniciarNativo(ui, (v) => sair(v), () => {
+          nativoAtivo = true;
         });
-        video.srcObject = stream;
-        await video.play();
-        status.textContent = "Aponte para o código…";
-        const nativo = (window as unknown as { BarcodeDetector?: new (opts: { formats: string[] }) => { detect: (s: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> } }).BarcodeDetector;
-        if (nativo) {
-          const det = new nativo({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code", "data_matrix"] });
-          detector = det;
-          timer = window.setInterval(() => {
-            if (encerrado || video.readyState < 2) return;
-            void det.detect(video).then((codigos) => {
-              const v = codigos[0]?.rawValue;
-              if (v) onCodigo(v);
-            }).catch(() => { /* frame vazio */ });
-          }, 250);
+        if (r === "ok") return;
+        nativoAtivo = false;
+        if (r === "denied") {
+          ui.mostrarPermissaoNegada(true);
           return;
         }
-        const { BrowserMultiFormatReader } = await import("@zxing/browser");
-        const reader = new BrowserMultiFormatReader();
-        const controles = await reader.decodeFromVideoElement(video, (result) => {
-          if (result) onCodigo(result.getText());
-        });
-        detector = { detect: async () => [], stop: () => controles.stop() };
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Não foi possível abrir a câmera.";
-        if (/NotAllowedError|Permission|denied/i.test(String((e as { name?: string })?.name) + msg)) {
-          status.textContent = "A câmera não foi autorizada. Autorize o acesso ou digite o código.";
-          input.focus();
-          return;
-        }
-        status.textContent = "Não foi possível abrir a câmera. Digite o código.";
-        input.focus();
-        if (!navigator.mediaDevices?.getUserMedia) reject(e instanceof Error ? e : new Error(msg));
       }
+      const web = await iniciarWeb(ui, (v) => sair(v));
+      stream = web.stream;
+      detector = web.detector;
+      timer = web.timer;
     })();
   });
+}
+
+type Overlay = {
+  raiz: HTMLElement;
+  video: HTMLVideoElement;
+  status: HTMLElement;
+  input: HTMLInputElement;
+  onCancel: (fn: () => void) => void;
+  onUsar: (fn: (v: string) => void) => void;
+  onAjustes: (fn: () => void) => void;
+  setStatus: (t: string) => void;
+  modoNativo: (on: boolean) => void;
+  mostrarPermissaoNegada: (nativo: boolean) => void;
+  remover: () => void;
+};
+
+function montarOverlay(): Overlay {
+  const raiz = document.createElement("div");
+  raiz.className = "leitor-overlay";
+  raiz.setAttribute("data-testid", "leitor-overlay");
+  raiz.setAttribute("role", "dialog");
+  raiz.setAttribute("aria-label", "Ler código de barras");
+  raiz.innerHTML = `
+    <div class="leitor-palco">
+      <div class="leitor-visor">
+        <video class="leitor-video" autoplay muted playsinline></video>
+        <div class="leitor-mira" aria-hidden="true">
+          <span class="canto c1"></span>
+          <span class="canto c2"></span>
+          <span class="canto c3"></span>
+          <span class="canto c4"></span>
+        </div>
+      </div>
+      <p class="leitor-status">Abrindo a câmera…</p>
+      <button type="button" class="btn btn-leitor-ajustes" data-acao="ajustes" hidden>Abrir configurações</button>
+      <label class="field leitor-digitar">Digitar o código
+        <input class="input" data-testid="leitor-digitado" inputmode="numeric" autocomplete="off" />
+      </label>
+      <div class="leitor-acoes">
+        <button type="button" class="btn grow" data-acao="cancelar">Cancelar</button>
+        <button type="button" class="btn btn-primary grow" data-acao="usar" data-testid="leitor-usar">Usar código</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(raiz);
+  const video = raiz.querySelector("video") as HTMLVideoElement;
+  const status = raiz.querySelector(".leitor-status") as HTMLElement;
+  const input = raiz.querySelector('[data-testid="leitor-digitado"]') as HTMLInputElement;
+  const btnAjustes = raiz.querySelector('[data-acao="ajustes"]') as HTMLButtonElement;
+  return {
+    raiz,
+    video,
+    status,
+    input,
+    onCancel: (fn) => {
+      raiz.querySelector('[data-acao="cancelar"]')?.addEventListener("click", fn);
+    },
+    onUsar: (fn) => {
+      raiz.querySelector('[data-acao="usar"]')?.addEventListener("click", () => {
+        const v = input.value.trim();
+        if (v) fn(v);
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && input.value.trim()) fn(input.value.trim());
+      });
+    },
+    onAjustes: (fn) => {
+      btnAjustes.addEventListener("click", fn);
+    },
+    setStatus: (t) => { status.textContent = t; },
+    modoNativo: (on) => {
+      raiz.classList.toggle("leitor-modo-nativo", on);
+      document.documentElement.classList.toggle("leitor-nativo-ativo", on);
+    },
+    mostrarPermissaoNegada: (nativo) => {
+      status.textContent = "A câmera não foi autorizada. Autorize nas configurações do aparelho ou digite o código.";
+      if (nativo) btnAjustes.hidden = false;
+      input.focus();
+    },
+    remover: () => {
+      document.documentElement.classList.remove("leitor-nativo-ativo");
+      raiz.remove();
+    },
+  };
+}
+
+type PluginScan = {
+  requestPermissions: () => Promise<{ camera?: string }>;
+  isSupported?: () => Promise<{ supported?: boolean }>;
+  startScan: (opts?: { formats?: readonly string[]; lensFacing?: string }) => Promise<void>;
+  stopScan: () => Promise<void>;
+  addListener: (ev: string, fn: (e: { barcode?: { rawValue?: string } }) => void) => Promise<{ remove: () => Promise<void> }>;
+  removeAllListeners?: () => Promise<void>;
+  openSettings?: () => Promise<void>;
+};
+
+async function carregarPlugin(): Promise<PluginScan> {
+  const mod = await import("@capacitor-mlkit/barcode-scanning");
+  return mod.BarcodeScanner as unknown as PluginScan;
+}
+
+async function pararNativo(estavaAtivo: boolean): Promise<void> {
+  document.documentElement.classList.remove("leitor-nativo-ativo");
+  if (!ehNativo() && !estavaAtivo) return;
+  try {
+    const scanner = await carregarPlugin();
+    await scanner.removeAllListeners?.();
+    await scanner.stopScan();
+  } catch {
+    /* already stopped or unavailable */
+  }
+}
+
+async function abrirAjustes(): Promise<void> {
+  try {
+    const scanner = await carregarPlugin();
+    await scanner.openSettings?.();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function iniciarNativo(
+  ui: Overlay,
+  onCodigo: (v: string | null) => void,
+  marcarAtivo: () => void,
+): Promise<"ok" | "denied" | "fallback"> {
+  try {
+    const scanner = await carregarPlugin();
+    try {
+      const sup = await scanner.isSupported?.();
+      if (sup && sup.supported === false) return "fallback";
+    } catch {
+      /* continue */
+    }
+    const perm = await scanner.requestPermissions();
+    if (perm.camera !== "granted" && perm.camera !== "limited") {
+      return "denied";
+    }
+    await scanner.addListener("barcodeScanned", (ev) => {
+      const v = ev.barcode?.rawValue?.trim();
+      if (v) onCodigo(v);
+    });
+    ui.modoNativo(true);
+    marcarAtivo();
+    const inicio = scanner.startScan({ formats: FORMATOS_NATIVOS, lensFacing: "BACK" });
+    const resultado = await Promise.race([
+      inicio.then(() => "ok" as const),
+      new Promise<"timeout">((r) => setTimeout(() => r("timeout"), START_SCAN_MS)),
+    ]);
+    if (resultado === "timeout") {
+      ui.modoNativo(false);
+      await pararNativo(true);
+      return "fallback";
+    }
+    ui.setStatus("Aponte para o código…");
+    return "ok";
+  } catch {
+    ui.modoNativo(false);
+    await pararNativo(true);
+    return "fallback";
+  }
+}
+
+async function iniciarWeb(
+  ui: Overlay,
+  onCodigo: (v: string) => void,
+): Promise<{ stream?: MediaStream; detector?: { stop?: () => void }; timer: number }> {
+  ui.modoNativo(false);
+  let stream: MediaStream | undefined;
+  let detector: { stop?: () => void } | undefined;
+  let timer = 0;
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      ui.setStatus("Este aparelho não liberou a câmera. Digite o código abaixo.");
+      ui.input.focus();
+      return { stream, detector, timer };
+    }
+    const pedido = navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    });
+    const limite = new Promise<MediaStream>((_, rej) => {
+      window.setTimeout(() => rej(new Error("timeout")), 5000);
+    });
+    stream = await Promise.race([pedido, limite]);
+    pedido.then((s) => {
+      if (s !== stream) s.getTracks().forEach((t) => t.stop());
+    }).catch(() => { /* already handled */ });
+    ui.video.srcObject = stream;
+    await ui.video.play();
+    ui.setStatus("Aponte para o código…");
+    const Nativo = (window as unknown as {
+      BarcodeDetector?: new (opts: { formats: string[] }) => {
+        detect: (s: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+      };
+    }).BarcodeDetector;
+    if (Nativo) {
+      const det = new Nativo({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code", "data_matrix"],
+      });
+      timer = window.setInterval(() => {
+        if (ui.video.readyState < 2) return;
+        void det.detect(ui.video).then((codigos) => {
+          const v = codigos[0]?.rawValue;
+          if (v) onCodigo(v);
+        }).catch(() => { /* empty frame */ });
+      }, 250);
+      return { stream, detector: { stop: () => window.clearInterval(timer) }, timer };
+    }
+    const { BrowserMultiFormatReader } = await import("@zxing/browser");
+    const reader = new BrowserMultiFormatReader();
+    const controles = await reader.decodeFromVideoElement(ui.video, (result) => {
+      if (result) onCodigo(result.getText());
+    });
+    detector = { stop: () => controles.stop() };
+    return { stream, detector, timer };
+  } catch (e) {
+    const nome = String((e as { name?: string })?.name ?? "");
+    const msg = e instanceof Error ? e.message : "Não foi possível abrir a câmera.";
+    if (/NotAllowedError|Permission|denied/i.test(nome + msg)) {
+      ui.setStatus("A câmera não foi autorizada. Autorize o acesso ou digite o código.");
+    } else {
+      ui.setStatus("Não foi possível abrir a câmera. Digite o código.");
+    }
+    ui.input.focus();
+    return { stream, detector, timer };
+  }
+}
+
+/** Kept for callers/tests that imported the web overlay directly. */
+export function lerCodigoNaWeb(): Promise<string | null> {
+  return lerCodigoBarras();
 }

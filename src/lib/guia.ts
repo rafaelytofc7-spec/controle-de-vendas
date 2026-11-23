@@ -9,7 +9,7 @@ No Console do Firebase (projeto controle-de-vendas-bddb9, conta dona do projeto)
 Enquanto essas regras novas não forem publicadas, não instale a 1.5.0 no lugar da 1.4.0: o aplicativo antigo (e-mail) deixa de sincronizar, e o novo (PIN) ainda não entra.
 
 No celular ou no site (depois das regras)
-1. Instale o APK 1.7.0 (ou abra o site atualizado) e, no primeiro uso, importe o arquivo de backup se ainda não tiver os dados neste aparelho (caixa-importacao-2026-11-22-2049.json, mesclar pelo id).
+1. Instale o APK 1.7.1 (ou abra o site atualizado) e, no primeiro uso, importe o arquivo de backup se ainda não tiver os dados neste aparelho (caixa-importacao-2026-11-22-2049.json, mesclar pelo id).
 2. Na primeira abertura aparece a tela de entrada. É preciso ter internet nesta primeira vez.
 3. No primeiro aparelho, escreva o seu nome e o PIN combinado (4 a 8 números) e toque em Entrar. Esse aparelho vira o Admin. Anote o código de recuperação de 8 caracteres e guarde fora do telefone. Se este aparelho já tinha vendas, elas sobem sozinhas para o banco compartilhado.
 4. A sincronização começa sozinha. Não é preciso ir em Ajustes nem tocar em sincronizar. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão voltar.

@@ -9,6 +9,7 @@ import { linkWhatsapp, textoCardapio } from "../lib/whatsapp";
 import { useConfirmar } from "../components/Dialogo";
 import { EstadoVazio } from "../components/EstadoVazio";
 import { lerCodigoBarras } from "../lib/leitorCodigo";
+import { BotaoLeitor } from "../components/BotaoLeitor";
 import { mensagemCodigoBarras, podeAdicionarCodigo, produtoVendidoPorPeso } from "../lib/codigoBarras";
 
 export function Cardapio() {
@@ -123,25 +124,31 @@ export function Cardapio() {
                       </ul>
                     )}
                     {erroCodigo && <p className="muted small" data-testid="erro-codigo" style={{ color: "var(--tomate-2)" }}>{erroCodigo}</p>}
-                    <div className="row wrap" style={{ marginTop: 8 }}>
-                      <input className="input grow" data-testid="codigo-barras-input" value={codigoNovo} onChange={(e) => setCodigoNovo(e.target.value)} placeholder="Digite ou leia o código" />
-                      <button type="button" className="btn" data-testid="adicionar-codigo" onClick={() => {
-                        const r = podeAdicionarCodigo(produtos, { id: edit === "novo" || !edit ? "" : edit, unidade, codigos_barras: codigos }, codigoNovo);
-                        if (!r.ok) { setErroCodigo(mensagemCodigoBarras(r)); return; }
-                        setCodigos((xs) => [...xs, r.codigo]); setCodigoNovo(""); setErroCodigo("");
-                      }}>Adicionar</button>
-                      <button type="button" className="btn btn-lima" data-testid="ler-codigo-produto" onClick={() => void (async () => {
-                        setErroCodigo("");
-                        try {
-                          const lido = await lerCodigoBarras();
-                          if (!lido) return;
-                          const r = podeAdicionarCodigo(produtos, { id: edit === "novo" || !edit ? "" : edit, unidade, codigos_barras: codigos }, lido);
+                    <div className="campo-codigo">
+                      <div className="campo-codigo-linha">
+                        <input className="input grow" data-testid="codigo-barras-input" value={codigoNovo} onChange={(e) => setCodigoNovo(e.target.value)} placeholder="Digite ou leia o código" />
+                        <button type="button" className="btn" data-testid="adicionar-codigo" onClick={() => {
+                          const r = podeAdicionarCodigo(produtos, { id: edit === "novo" || !edit ? "" : edit, unidade, codigos_barras: codigos }, codigoNovo);
                           if (!r.ok) { setErroCodigo(mensagemCodigoBarras(r)); return; }
-                          setCodigos((xs) => [...xs, r.codigo]); setErroCodigo("");
-                        } catch (e) {
-                          setErroCodigo(e instanceof Error ? e.message : "Não foi possível ler o código.");
-                        }
-                      })()}>Ler pela câmera</button>
+                          setCodigos((xs) => [...xs, r.codigo]); setCodigoNovo(""); setErroCodigo("");
+                        }}>Adicionar</button>
+                      </div>
+                      <BotaoLeitor
+                        testId="ler-codigo-produto"
+                        label="Ler pela câmera"
+                        onClick={() => void (async () => {
+                          setErroCodigo("");
+                          try {
+                            const lido = await lerCodigoBarras();
+                            if (!lido) return;
+                            const r = podeAdicionarCodigo(produtos, { id: edit === "novo" || !edit ? "" : edit, unidade, codigos_barras: codigos }, lido);
+                            if (!r.ok) { setErroCodigo(mensagemCodigoBarras(r)); return; }
+                            setCodigos((xs) => [...xs, r.codigo]); setErroCodigo("");
+                          } catch (e) {
+                            setErroCodigo(e instanceof Error ? e.message : "Não foi possível ler o código.");
+                          }
+                        })()}
+                      />
                     </div>
                     <p className="muted small">Um produto pode ter vários códigos. O mesmo código não pode se repetir no cardápio.</p>
                   </>
