@@ -15,6 +15,7 @@ Aplicativo de caixa, cardápio, entregas e livro de vendas. Funciona no celular 
 - Dados no aparelho (IndexedDB). Quando houver internet e você estiver autenticado, a sincronização é nos dois sentidos com o Cloud Firestore.
 - Backup por arquivo JSON e, se você configurar o Google, o botão “Salvar no Google Drive”.
 - O nome da loja se configura em **Mais → Ajustes**.
+- Leitor de código de barras na venda e no cardápio (pela câmera), para produtos vendidos por unidade — não por quilo. Um produto pode ter vários códigos, sem repetir.
 
 Este aplicativo **não** envia cobranças reais para Stone ou PicPay e **não** guarda tokens de maquininha.
 
@@ -37,9 +38,9 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 ## Ligar a nuvem
 
-A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Abra **Mais → Ajustes → Nuvem**, informe o seu nome e o PIN da loja. O primeiro aparelho que entra vira o Admin e define o PIN. Os outros entram com o mesmo PIN e um nome de exibição; todos usam o mesmo banco na nuvem. Só o Admin gerencia a equipe, o PIN, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há cargos nem convite por e-mail.
+A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Na primeira abertura o aplicativo pede o nome e o PIN (é preciso ter internet nesta primeira vez). O primeiro aparelho vira o Admin; os outros entram com o mesmo PIN e um nome. Todos usam o mesmo banco, e a sincronização é automática. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão volta. Só o Admin gerencia a equipe, o PIN, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há convite por e-mail.
 
-As regras do PIN e o acesso anônimo precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.6.0 usa as mesmas regras da 1.5.0.
+As regras do PIN e o acesso anônimo precisam estar publicados no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)). A 1.7.0 usa as mesmas regras da 1.5.0.
 
 O detalhe está no aplicativo, em **Mais → Ajustes → Guia**, e no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Se quiser outro projeto Firebase, a tela Nuvem ainda aceita colar uma configuração alternativa.
 
@@ -59,6 +60,8 @@ npm run test:e2e  # precisa do backup privado no caminho local de desenvolviment
 ## Telas
 
 As capturas usam um nome de loja genérico.
+
+![Tela de entrada com nome e PIN](docs/00-entrada.png)
 
 ![Início, com o total do dia e atalho de encomenda](docs/01-inicio.png)
 

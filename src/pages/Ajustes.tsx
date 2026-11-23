@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { signOut } from "firebase/auth";
 import { useStore, exportarDados, montarBackup, marcarBackupFeito } from "../store";
-import { configValida, iniciarFirebase } from "../lib/firebase";
+import { configValida } from "../lib/firebase";
 import { carregarBackupDoDrive, carregarGis, obterTokenDrive, salvarBackupNoDrive } from "../lib/drive";
 import type { FirebaseWebConfig, PrefsNotificacao } from "../lib/types";
 import { pedirPermissaoNotificacoes, tocarSomInApp } from "../lib/notificacoes";
@@ -11,7 +10,7 @@ import { APP_VERSION, APK_RELEASE_URL, buscarVersaoRemota, temAtualizacao } from
 
 export function Ajustes() {
   const store = useStore();
-  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, importarArquivo, ehDono, entrarNaNuvem, recuperarLider, equipe, codigoRecuperacao, prefsNotificacao, salvarPrefs } = store;
+  const { config, atualizarConfig, loja, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, importarArquivo, ehDono, entrarNaNuvem, recuperarLider, sairDaNuvem, equipe, codigoRecuperacao, prefsNotificacao, salvarPrefs, statusNuvem } = store;
   const [tab, setTab] = useState<"loja" | "backup" | "nuvem" | "avisos" | "guia">("loja");
   const [nome, setNome] = useState(config.nome_loja);
   const [tel, setTel] = useState(config.telefone);
@@ -97,9 +96,9 @@ export function Ajustes() {
       if (r.primeiraVez && r.codigoRecuperacao) {
         setAviso(`Você é o Admin desta loja. Anote o código de recuperação: ${r.codigoRecuperacao}. Ele aparece só agora neste aparelho. Sem ele, se este aparelho for perdido, não dá para retomar o papel de Admin.`);
       } else if (r.codigoRecuperacao) {
-        setAviso("Entrou na loja compartilhada. Sincronize para receber e enviar os dados.");
+        setAviso("Entrou na loja compartilhada. A sincronização começa sozinha.");
       } else {
-        setAviso("Entrou na loja compartilhada. Toque em Sincronizar agora para alinhar os dados.");
+        setAviso("Entrou na loja compartilhada. A sincronização começa sozinha.");
       }
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Não foi possível entrar.");
@@ -199,7 +198,7 @@ export function Ajustes() {
       {tab === "nuvem" && (
         <div className="card col">
           <h3>Nuvem compartilhada</h3>
-          <p className="muted">A nuvem já vem configurada. O primeiro aparelho que entrar com o PIN se torna o Admin e define a senha da loja. Os outros entram com o mesmo PIN e um nome de exibição. Todo mundo passa a usar o mesmo banco na nuvem.</p>
+          <p className="muted">A nuvem já vem configurada. Na primeira abertura o aplicativo pede o nome e o PIN e já entra no mesmo banco. O primeiro aparelho vira Admin. A sincronização é automática: não é preciso tocar em “Sincronizar agora”, salvo se quiser forçar uma nova tentativa.</p>
           <p className="muted small">Só cole um JSON abaixo se quiser usar outro projeto Firebase. A configuração alternativa fica só neste aparelho.</p>
           <textarea className="input mono" value={cfgTxt} onChange={(e) => setCfgTxt(e.target.value)} placeholder='Substituição opcional: { "apiKey": "...", "authDomain": "...", "projectId": "...", "appId": "..." }' />
           <div className="row wrap">
@@ -208,16 +207,16 @@ export function Ajustes() {
           </div>
           {configValida(firebaseCfg) && (
             <>
-              <p className="muted small">Projeto: {firebaseCfg?.projectId} · {online ? "online" : "offline"} · {usuario ? (equipe?.ehLider || ehDono ? `Admin: ${equipe?.meuNome || usuario.displayName || "você"}` : `conectado: ${equipe?.meuNome || usuario.displayName || "aparelho"}`) : "não conectado"}</p>
+              <p className="muted small">Projeto: {firebaseCfg?.projectId} · {online ? "online" : "offline"} · {usuario ? (equipe?.ehLider || ehDono ? `Admin: ${equipe?.meuNome || usuario.displayName || "você"}` : `conectado: ${equipe?.meuNome || usuario.displayName || "aparelho"}`) : "não conectado"} · {statusNuvem}</p>
               {syncando && <p className="muted">Sincronizando… {progressoSync ? `${progressoSync.fase} ${progressoSync.feito}/${progressoSync.total}` : ""}</p>}
               {erroSync && <div className="banner erro">{erroSync}</div>}
               {usuario && equipe ? (
                 <>
                   <div className="row wrap">
-                    <button className="btn btn-primary grow" disabled={!online || syncando} onClick={() => void tentarSync()}>Sincronizar agora</button>
+                    <button className="btn grow" disabled={!online || syncando} onClick={() => void tentarSync()}>Sincronizar de novo</button>
                     <button className="btn grow" onClick={() => {
                       if (!confirm("Sair deste aparelho cria uma nova identidade na próxima entrada. O Admin deve guardar o código de recuperação antes. Continuar?")) return;
-                      if (firebaseCfg) void signOut(iniciarFirebase(firebaseCfg).auth);
+                      void sairDaNuvem();
                     }}>Sair deste aparelho</button>
                   </div>
                   {codigoRecuperacao && (equipe.ehLider || ehDono) && (

@@ -8,6 +8,8 @@ import { agoraIso } from "../lib/datas";
 import { linkWhatsapp, textoCardapio } from "../lib/whatsapp";
 import { useConfirmar } from "../components/Dialogo";
 import { EstadoVazio } from "../components/EstadoVazio";
+import { lerCodigoBarras } from "../lib/leitorCodigo";
+import { mensagemCodigoBarras, podeAdicionarCodigo, produtoVendidoPorPeso } from "../lib/codigoBarras";
 
 export function Cardapio() {
   const { produtos, config, salvarProduto, excluirProduto } = useStore();
@@ -21,6 +23,9 @@ export function Cardapio() {
   const [promo, setPromo] = useState("");
   const [inicia, setInicia] = useState("");
   const [expira, setExpira] = useState("");
+  const [codigos, setCodigos] = useState<string[]>([]);
+  const [codigoNovo, setCodigoNovo] = useState("");
+  const [erroCodigo, setErroCodigo] = useState("");
 
   const lista = useMemo(() => {
     const q = buscaDeb.trim().toLowerCase();
@@ -29,7 +34,7 @@ export function Cardapio() {
 
   function abrir(id: string | "novo") {
     if (id === "novo") {
-      setEdit("novo"); setNome(""); setPreco(""); setUnidade("kg"); setPromo(""); setInicia(""); setExpira("");
+      setEdit("novo"); setNome(""); setPreco(""); setUnidade("kg"); setPromo(""); setInicia(""); setExpira(""); setCodigos([]); setCodigoNovo(""); setErroCodigo("");
       return;
     }
     const p = produtos.find((x) => x.id === id);
@@ -38,6 +43,7 @@ export function Cardapio() {
     setPromo(p.preco_promocional != null ? String(p.preco_promocional).replace(".", ",") : "");
     setInicia(p.promo_inicia_em ? p.promo_inicia_em.slice(0, 16) : "");
     setExpira(p.promo_expira_em ? p.promo_expira_em.slice(0, 16) : "");
+    setCodigos(p.codigos_barras ?? []); setCodigoNovo(""); setErroCodigo("");
   }
 
   function parseN(s: string) { return Number(s.replace(/\./g, "").replace(",", ".")) || 0; }
@@ -53,6 +59,7 @@ export function Cardapio() {
       preco_promocional: promo ? parseN(promo) : null,
       promo_inicia_em: inicia ? new Date(inicia).toISOString() : null,
       promo_expira_em: expira ? new Date(expira).toISOString() : null,
+      codigos_barras: produtoVendidoPorPeso(unidade) ? [] : codigos,
     });
     setEdit(null);
   }
@@ -99,6 +106,47 @@ export function Cardapio() {
               <label className="field">Nome<input className="input" value={nome} onChange={(e) => setNome(e.target.value)} /></label>
               <label className="field">Preço<input className="input num" value={preco} onChange={(e) => setPreco(e.target.value)} /></label>
               <label className="field">Unidade<input className="input" value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="kg, un, bandeja..." /></label>
+              <div className="field">
+                <span>Código de barras</span>
+                {produtoVendidoPorPeso(unidade) ? (
+                  <p className="muted small" data-testid="aviso-codigo-kg">Produtos vendidos por quilo não usam o leitor de código de barras. Use a calculadora na venda.</p>
+                ) : (
+                  <>
+                    {codigos.length > 0 && (
+                      <ul className="lista-codigos" data-testid="lista-codigos">
+                        {codigos.map((c) => (
+                          <li key={c} className="chip-row" style={{ justifyContent: "space-between", marginTop: 6 }}>
+                            <code>{c}</code>
+                            <button type="button" className="btn btn-sm btn-ghost" aria-label={`Remover código ${c}`} onClick={() => setCodigos((xs) => xs.filter((x) => x !== c))}>Remover</button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {erroCodigo && <p className="muted small" data-testid="erro-codigo" style={{ color: "var(--tomate-2)" }}>{erroCodigo}</p>}
+                    <div className="row wrap" style={{ marginTop: 8 }}>
+                      <input className="input grow" data-testid="codigo-barras-input" value={codigoNovo} onChange={(e) => setCodigoNovo(e.target.value)} placeholder="Digite ou leia o código" />
+                      <button type="button" className="btn" data-testid="adicionar-codigo" onClick={() => {
+                        const r = podeAdicionarCodigo(produtos, { id: edit === "novo" || !edit ? "" : edit, unidade, codigos_barras: codigos }, codigoNovo);
+                        if (!r.ok) { setErroCodigo(mensagemCodigoBarras(r)); return; }
+                        setCodigos((xs) => [...xs, r.codigo]); setCodigoNovo(""); setErroCodigo("");
+                      }}>Adicionar</button>
+                      <button type="button" className="btn btn-lima" data-testid="ler-codigo-produto" onClick={() => void (async () => {
+                        setErroCodigo("");
+                        try {
+                          const lido = await lerCodigoBarras();
+                          if (!lido) return;
+                          const r = podeAdicionarCodigo(produtos, { id: edit === "novo" || !edit ? "" : edit, unidade, codigos_barras: codigos }, lido);
+                          if (!r.ok) { setErroCodigo(mensagemCodigoBarras(r)); return; }
+                          setCodigos((xs) => [...xs, r.codigo]); setErroCodigo("");
+                        } catch (e) {
+                          setErroCodigo(e instanceof Error ? e.message : "Não foi possível ler o código.");
+                        }
+                      })()}>Ler pela câmera</button>
+                    </div>
+                    <p className="muted small">Um produto pode ter vários códigos. O mesmo código não pode se repetir no cardápio.</p>
+                  </>
+                )}
+              </div>
               <label className="field">Preço promocional<input className="input num" value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="opcional" /></label>
               <label className="field">Início da promo<input className="input" type="datetime-local" value={inicia} onChange={(e) => setInicia(e.target.value)} /></label>
               <label className="field">Fim da promo<input className="input" type="datetime-local" value={expira} onChange={(e) => setExpira(e.target.value)} /></label>

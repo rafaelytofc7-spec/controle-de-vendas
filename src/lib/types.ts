@@ -63,6 +63,8 @@ export interface Produto extends Autoria {
   nome: string;
   preco: number;
   unidade: string | null;
+  /** Códigos de barras (produtos vendidos por unidade, não por kg). */
+  codigos_barras?: string[];
   ordem: number;
   criado_em: string;
   atualizado_em: string;

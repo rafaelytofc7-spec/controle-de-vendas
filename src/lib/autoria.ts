@@ -1,6 +1,6 @@
 import type { User } from "firebase/auth";
 import type { AcaoAtividade, Atividade, Autoria } from "./types";
-import { AUTOR_LOCAL } from "./types";
+import { AUTOR_IMPORTADO, AUTOR_LOCAL } from "./types";
 import { agoraIso } from "./datas";
 import { gerarId } from "./importacao";
 
@@ -29,6 +29,14 @@ export function autoriaAtualizacao<T extends Autoria>(existente: T, usuario: Use
     atualizadoPor: a.uid,
     atualizadoPorEmail: a.email || undefined,
   };
+}
+
+export function registroImportado(row: { criadoPor?: string; atualizadoPor?: string }): boolean {
+  return row.criadoPor === AUTOR_IMPORTADO || row.atualizadoPor === AUTOR_IMPORTADO || !row.criadoPor;
+}
+
+export function podeEnviarRegistro(row: { criadoPor?: string; atualizadoPor?: string }, ehAdmin: boolean): boolean {
+  return ehAdmin || !registroImportado(row);
 }
 
 export function rotuloAutor(criadoPor?: string, email?: string): string {

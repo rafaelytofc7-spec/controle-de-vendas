@@ -1,6 +1,6 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { connectAuthEmulator, getAuth, type Auth } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore, type Firestore } from "firebase/firestore";
 import type { FirebaseWebConfig } from "./types";
 import { FIREBASE_CONFIG_PADRAO } from "./firebasePadrao";
 
@@ -8,6 +8,11 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let dbFs: Firestore | null = null;
 let lastKey = "";
+let emuladorLigado = false;
+
+export function usarEmuladorFirebase(): boolean {
+  return import.meta.env.VITE_FIREBASE_EMULATOR === "1";
+}
 
 export function configValida(cfg: FirebaseWebConfig | undefined | null): cfg is FirebaseWebConfig {
   if (!cfg) return false;
@@ -34,6 +39,13 @@ export function iniciarFirebase(cfg: FirebaseWebConfig): { app: FirebaseApp; aut
   auth = getAuth(app);
   dbFs = getFirestore(app);
   lastKey = key;
+  if (usarEmuladorFirebase() && !emuladorLigado) {
+    const authPort = Number(import.meta.env.VITE_AUTH_EMULATOR_PORT) || 9099;
+    const fsPort = Number(import.meta.env.VITE_FIRESTORE_EMULATOR_PORT) || 8080;
+    try { connectAuthEmulator(auth, `http://127.0.0.1:${authPort}`, { disableWarnings: true }); } catch { /* já ligado */ }
+    try { connectFirestoreEmulator(dbFs, "127.0.0.1", fsPort); } catch { /* já ligado */ }
+    emuladorLigado = true;
+  }
   return { app, auth, db: dbFs };
 }
 

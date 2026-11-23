@@ -5,6 +5,7 @@ import {
   getDoc,
   getDocs,
   limit,
+  onSnapshot,
   query,
   setDoc,
   startAfter,
@@ -14,6 +15,16 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import type { User } from "firebase/auth";
+
+/** Firestore rejects `undefined` field values. */
+function semUndefined(data: Record<string, unknown> | DocumentData): DocumentData {
+  const out: DocumentData = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) out[k] = v;
+  }
+  return out;
+}
+
 import { getFirebase } from "./firebase";
 import {
   getMeta,
@@ -43,6 +54,7 @@ import {
 import type { Atividade, Cobranca, Encomenda, Entrega, EstadoEquipe, MembroLoja, Produto, Reabastecimento, Venda } from "./types";
 export type { EstadoEquipe } from "./types";
 import { agoraIso } from "./datas";
+import { podeEnviarRegistro, registroImportado } from "./autoria";
 
 const LOTE = 400;
 
@@ -57,13 +69,13 @@ export async function garantirMembro(loja: string, user: User): Promise<EstadoEq
   const lojaRef = doc(db, "lojas", loja);
   const snap = await getDoc(lojaRef);
   if (!snap.exists()) {
-    throw new Error("A loja ainda não existe na nuvem. Entre com o seu nome e o PIN em Ajustes → Nuvem.");
+    throw new Error("A loja ainda não existe na nuvem. Entre com o seu nome e o PIN na tela de entrada.");
   }
   const liderUid = (snap.data() as { liderUid?: string }).liderUid ?? "";
   const membroRef = doc(db, "lojas", loja, "membros", user.uid);
   const membroSnap = await getDoc(membroRef);
   if (!membroSnap.exists()) {
-    throw new Error("Este aparelho ainda não entrou na loja. Abra Ajustes → Nuvem e entre com o PIN.");
+    throw new Error("Este aparelho ainda não entrou na loja. Entre com o nome e o PIN na tela de entrada.");
   }
   const atual = membroSnap.data() as MembroLoja;
   if (atual.bloqueado) {
@@ -110,7 +122,7 @@ async function escreverLote(itens: Array<{ path: string[]; data: DocumentData }>
     const fatia = itens.slice(i, i + LOTE);
     const batch = writeBatch(db);
     for (const it of fatia) {
-      batch.set(doc(db, ...(it.path as [string, ...string[]])), it.data, { merge: true });
+      batch.set(doc(db, ...(it.path as [string, ...string[]])), semUndefined(it.data), { merge: true });
     }
     await batch.commit();
   }
@@ -122,7 +134,7 @@ export async function uploadInicial(
   onProg?: (p: ProgressoSync) => void,
 ): Promise<void> {
   const estado = await estadoEquipeLocal();
-  const ehDono = estado?.ehDono ?? true;
+  const ehAdmin = Boolean(estado?.ehDono || estado?.ehLider);
   const vendas = await listarVendas();
   const produtos = await listarProdutos();
   const entregas = await listarEntregas();
@@ -131,13 +143,13 @@ export async function uploadInicial(
   const reab = await listarReabastecimentos();
   const cfg = await obterConfig();
   const itens: Array<{ path: string[]; data: DocumentData }> = [];
-  if (cfg && ehDono) itens.push({ path: ["lojas", loja, "configuracao", "atual"], data: cfg });
-  for (const v of vendas) itens.push({ path: ["lojas", loja, "vendas", v.id], data: v });
-  for (const p of produtos) itens.push({ path: ["lojas", loja, "produtos", p.id], data: p });
-  for (const e of entregas) itens.push({ path: ["lojas", loja, "entregas", e.id], data: e });
-  for (const e of encomendas) itens.push({ path: ["lojas", loja, "encomendas", e.id], data: e });
-  for (const c of cobrancas) itens.push({ path: ["lojas", loja, "cobrancas", c.id], data: c });
-  for (const r of reab) itens.push({ path: ["lojas", loja, "reabastecimentos", r.id], data: r });
+  if (cfg && ehAdmin) itens.push({ path: ["lojas", loja, "configuracao", "atual"], data: cfg });
+  for (const v of vendas) if (podeEnviarRegistro(v, ehAdmin)) itens.push({ path: ["lojas", loja, "vendas", v.id], data: v });
+  for (const p of produtos) if (podeEnviarRegistro(p, ehAdmin)) itens.push({ path: ["lojas", loja, "produtos", p.id], data: p });
+  for (const e of entregas) if (podeEnviarRegistro(e, ehAdmin)) itens.push({ path: ["lojas", loja, "entregas", e.id], data: e });
+  for (const e of encomendas) if (podeEnviarRegistro(e, ehAdmin)) itens.push({ path: ["lojas", loja, "encomendas", e.id], data: e });
+  for (const c of cobrancas) if (podeEnviarRegistro(c, ehAdmin)) itens.push({ path: ["lojas", loja, "cobrancas", c.id], data: c });
+  for (const r of reab) if (podeEnviarRegistro(r, ehAdmin)) itens.push({ path: ["lojas", loja, "reabastecimentos", r.id], data: r });
 
   const total = itens.length;
   onProg?.({ fase: "enviando", feito: 0, total });
@@ -304,22 +316,45 @@ export async function enviarPendentes(loja: string, ehDono: boolean): Promise<nu
   for (let i = 0; i < pendentes.length; i += LOTE) {
     const fatia = pendentes.slice(i, i + LOTE);
     const batch = writeBatch(db);
+    const enviados: typeof fatia = [];
     for (const p of fatia) {
       if (p.colecao === "configuracao") {
-        if (ehDono && cfg) batch.set(doc(db, "lojas", loja, "configuracao", "atual"), cfg, { merge: true });
+        if (ehDono && cfg) {
+          batch.set(doc(db, "lojas", loja, "configuracao", "atual"), semUndefined(cfg as unknown as Record<string, unknown>), { merge: true });
+          enviados.push(p);
+        }
         continue;
       }
       const store = mapa[p.colecao];
       const data = store?.get(p.id);
       const ref = doc(db, "lojas", loja, p.colecao, p.id);
+      if (data && !podeEnviarRegistro(data as { criadoPor?: string; atualizadoPor?: string }, ehDono)) {
+        continue;
+      }
       if (p.acao === "delete" || (data as { excluido?: boolean } | undefined)?.excluido) {
-        batch.set(ref, { ...(data ?? { id: p.id }), excluido: true, atualizado_em: new Date().toISOString() }, { merge: true });
+        batch.set(ref, semUndefined({ ...(data ?? { id: p.id }), excluido: true, atualizado_em: new Date().toISOString() }), { merge: true });
+        enviados.push(p);
       } else if (data) {
-        batch.set(ref, data, { merge: true });
+        batch.set(ref, semUndefined(data as Record<string, unknown>), { merge: true });
+        enviados.push(p);
       }
     }
-    await batch.commit();
-    for (const p of fatia) await limparPendente(p.id);
+    if (enviados.length) {
+      try {
+        await batch.commit();
+      } catch (e) {
+        const uid = (() => { try { return getFirebase().auth.currentUser?.uid; } catch { return ""; } })();
+        const resumo = enviados.map((p) => {
+          const data = p.colecao === "configuracao" ? cfg : mapa[p.colecao]?.get(p.id);
+          const d = data as { criadoPor?: string; uid?: string } | undefined;
+          return `${p.colecao}/${p.id} criadoPor=${d?.criadoPor ?? ""} uidCampo=${d?.uid ?? ""}`;
+        }).join("; ");
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("envio pendentes", uid || "?", resumo, e);
+        throw e instanceof Error ? e : new Error(msg);
+      }
+    }
+    for (const p of enviados) await limparPendente(p.id);
   }
   return pendentes.length;
 }
@@ -328,19 +363,175 @@ export async function sincronizar(
   loja: string,
   user: User,
   onProg?: (p: ProgressoSync) => void,
-): Promise<EstadoEquipe> {
+): Promise<EstadoEquipe & { retidosImportados: number; enviadosMerge: number }> {
   const estado = await garantirMembro(loja, user);
-  const precisa = await getMeta<boolean>("precisa_upload_inicial");
-  if (precisa) {
-    await uploadInicial(loja, user, onProg);
-  } else {
-    await enviarPendentes(loja, estado.ehDono);
-    await puxarRemoto(loja, onProg);
-    await enviarPendentes(loja, estado.ehDono);
-  }
+  const ehAdmin = Boolean(estado.ehDono || estado.ehLider);
+  const resultado = await mesclarLocalNaNuvem(loja, ehAdmin, onProg);
+  await enviarPendentes(loja, ehAdmin);
   await setMeta("ultimo_sync", new Date().toISOString());
-  return estado;
+  return { ...estado, retidosImportados: resultado.retidos, enviadosMerge: resultado.enviados };
 }
+
+
+export interface ResultadoMerge {
+  enviados: number;
+  retidos: number;
+  jaFeito: boolean;
+}
+
+export async function precisaMesclarLocal(): Promise<boolean> {
+  const feito = await getMeta<boolean>("nuvem_merge_feito");
+  if (feito) return false;
+  const precisa = await getMeta<boolean>("precisa_upload_inicial");
+  if (precisa) return true;
+  const vendas = await listarVendas();
+  const produtos = await listarProdutos();
+  return vendas.length + produtos.length > 0;
+}
+
+export async function mesclarLocalNaNuvem(
+  loja: string,
+  ehAdmin: boolean,
+  onProg?: (p: ProgressoSync) => void,
+): Promise<ResultadoMerge> {
+  const precisa = await precisaMesclarLocal();
+  if (!precisa) {
+    await enviarPendentes(loja, ehAdmin);
+    await puxarRemoto(loja, onProg);
+    await enviarPendentes(loja, ehAdmin);
+    return { enviados: 0, retidos: 0, jaFeito: true };
+  }
+  await puxarRemoto(loja, onProg);
+  const estado = await estadoEquipeLocal();
+  const admin = ehAdmin || Boolean(estado?.ehDono || estado?.ehLider);
+  const vendas = await listarVendas();
+  const produtos = await listarProdutos();
+  const entregas = await listarEntregas();
+  const encomendas = await listarEncomendas();
+  const cobrancas = await listarCobrancas(10_000);
+  const reab = await listarReabastecimentos();
+  const cfg = await obterConfig();
+  const itens: Array<{ path: string[]; data: DocumentData }> = [];
+  let retidos = 0;
+  const acum = <T extends { id: string; criadoPor?: string; atualizadoPor?: string }>(col: string, rows: T[]) => {
+    for (const row of rows) {
+      if (!podeEnviarRegistro(row, admin)) { retidos += 1; continue; }
+      itens.push({ path: ["lojas", loja, col, row.id], data: row });
+    }
+  };
+  if (cfg && admin) itens.push({ path: ["lojas", loja, "configuracao", "atual"], data: cfg });
+  acum("vendas", vendas);
+  acum("produtos", produtos);
+  acum("entregas", entregas);
+  acum("encomendas", encomendas);
+  acum("cobrancas", cobrancas);
+  acum("reabastecimentos", reab);
+  const total = itens.length;
+  onProg?.({ fase: "enviando", feito: 0, total });
+  for (let i = 0; i < itens.length; i += LOTE) {
+    await escreverLote(itens.slice(i, i + LOTE));
+    onProg?.({ fase: "enviando", feito: Math.min(i + LOTE, total), total });
+  }
+  await setMeta("precisa_upload_inicial", false);
+  await setMeta("nuvem_merge_feito", true);
+  await setMeta("ultimo_sync", new Date().toISOString());
+  return { enviados: total, retidos, jaFeito: false };
+}
+
+const COLECOES_VIVO = ["vendas", "produtos", "entregas", "encomendas", "cobrancas", "reabastecimentos"] as const;
+
+export function ouvirLoja(loja: string, aoMudar: () => void, onErro?: (e: Error) => void): () => void {
+  const { db } = getFirebase();
+  const uns = COLECOES_VIVO.map((col) => onSnapshot(
+    collection(db, "lojas", loja, col),
+    async (snap) => {
+      let mudou = false;
+      if (col === "vendas") {
+        const mapa = new Map((await listarVendas()).map((x) => [x.id, x]));
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") continue;
+          const r = { id: ch.doc.id, ...ch.doc.data() } as Venda;
+          const local = mapa.get(r.id);
+          if (!local || maisNovo(local.atualizado_em, r.atualizado_em) === "remoto") {
+            await upsertVenda(r, false);
+            mudou = true;
+          }
+        }
+      } else if (col === "produtos") {
+        const mapa = new Map((await listarProdutos()).map((x) => [x.id, x]));
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") continue;
+          const r = { id: ch.doc.id, ...ch.doc.data() } as Produto;
+          const local = mapa.get(r.id);
+          if (!local || maisNovo(local.atualizado_em, r.atualizado_em) === "remoto") {
+            await upsertProduto(r, false);
+            mudou = true;
+          }
+        }
+      } else if (col === "entregas") {
+        const mapa = new Map((await listarEntregas()).map((x) => [x.id, x]));
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") continue;
+          const r = { id: ch.doc.id, ...ch.doc.data() } as Entrega;
+          const local = mapa.get(r.id);
+          if (!local || maisNovo(local.atualizado_em, r.atualizado_em) === "remoto") {
+            await upsertEntrega(r, false);
+            mudou = true;
+          }
+        }
+      } else if (col === "encomendas") {
+        const mapa = new Map((await listarEncomendas()).map((x) => [x.id, x]));
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") continue;
+          const r = { id: ch.doc.id, ...ch.doc.data() } as Encomenda;
+          const local = mapa.get(r.id);
+          if (!local || maisNovo(local.atualizado_em, r.atualizado_em) === "remoto") {
+            await upsertEncomenda(r, false);
+            mudou = true;
+          }
+        }
+      } else if (col === "cobrancas") {
+        const mapa = new Map((await listarCobrancas(10_000)).map((x) => [x.id, x]));
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") continue;
+          const r = { id: ch.doc.id, ...ch.doc.data() } as Cobranca;
+          const local = mapa.get(r.id);
+          if (!local || maisNovo(local.atualizado_em, r.atualizado_em) === "remoto") {
+            await upsertCobranca(r, false);
+            mudou = true;
+          }
+        }
+      } else if (col === "reabastecimentos") {
+        const mapa = new Map((await listarReabastecimentos()).map((x) => [x.id, x]));
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") continue;
+          const r = { id: ch.doc.id, ...ch.doc.data() } as Reabastecimento;
+          const local = mapa.get(r.id);
+          if (!local || maisNovo(local.atualizado_em, r.atualizado_em) === "remoto") {
+            await upsertReabastecimento(r, false);
+            mudou = true;
+          }
+        }
+      }
+      if (mudou) aoMudar();
+    },
+    (e) => onErro?.(e instanceof Error ? e : new Error(String(e))),
+  ));
+  const unCfg = onSnapshot(doc(db, "lojas", loja, "configuracao", "atual"), async (snap) => {
+    if (!snap.exists()) return;
+    const remoto = snap.data();
+    const local = await obterConfig();
+    const eq = await estadoEquipeLocal();
+    const forcarRemoto = eq && !eq.ehDono && !eq.ehLider;
+    if (forcarRemoto || maisNovo(local?.atualizado_em, remoto.atualizado_em) === "remoto" || !local) {
+      await salvarConfig(remoto as never, false);
+      aoMudar();
+    }
+  }, () => { /* config pode falhar se ainda não for membro */ });
+  return () => { uns.forEach((u) => u()); unCfg(); };
+}
+
+void registroImportado;
 
 void query;
 void where;

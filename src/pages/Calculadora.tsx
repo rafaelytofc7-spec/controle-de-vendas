@@ -13,6 +13,10 @@ import { EstadoVazio } from "../components/EstadoVazio";
 import { Link } from "react-router-dom";
 import { encomendaAtrasada, statusDeEncomenda } from "../lib/encomendas";
 import { nomeDeRegistro } from "../lib/presenca";
+import { lerCodigoBarras } from "../lib/leitorCodigo";
+import { interpretarLeituraVenda } from "../lib/codigoBarras";
+import { gerarId } from "../lib/importacao";
+import { agoraIso } from "../lib/datas";
 
 const CHAVES = [5, 10, 20, 50, 100];
 
@@ -61,7 +65,7 @@ const ItemVendaHoje = memo(function ItemVendaHoje({
 });
 
 export function Calculadora() {
-  const { agregados, registrarVenda, excluirVenda, registrarCobranca, confirmarCobranca, cancelarCobranca, cobrancas, encomendas, membros } = useStore();
+  const { agregados, registrarVenda, excluirVenda, registrarCobranca, confirmarCobranca, cancelarCobranca, cobrancas, encomendas, membros, produtos, salvarProduto } = useStore();
   const { confirmar, dialogo } = useConfirmar();
   const [digits, setDigits] = useState("");
   const [acumulado, setAcumulado] = useState<number | null>(null);
@@ -70,6 +74,8 @@ export function Calculadora() {
   const [agora, setAgora] = useState(Date.now());
   const [cobrando, setCobrando] = useState(false);
   const [cobrancaAtual, setCobrancaAtual] = useState<string | null>(null);
+  const [avisoScan, setAvisoScan] = useState("");
+  const [cadastroScan, setCadastroScan] = useState<{ codigo: string; nome: string; preco: string; unidade: string } | null>(null);
 
   useEffect(() => {
     const t = setInterval(() => setAgora(Date.now()), 15_000);
@@ -140,6 +146,58 @@ export function Calculadora() {
     if (ok) await excluirVenda(v.id);
   }
 
+
+  function aplicarPrecoLido(preco: number) {
+    const base = (acumulado != null && operador) ? calcular(acumulado, valor, operador) : valor;
+    const total = base + preco;
+    setDigits(valorParaDigits(total));
+    setAcumulado(null);
+    setOperador(null);
+  }
+
+  async function lerProduto() {
+    setAvisoScan("");
+    try {
+      const lido = await lerCodigoBarras();
+      if (!lido) return;
+      const r = interpretarLeituraVenda(produtos, lido);
+      if (r.tipo === "invalido") { setAvisoScan("Não foi possível ler o código."); return; }
+      if (r.tipo === "por_kg") {
+        setAvisoScan(`“${r.produto.nome}” é vendido por quilo. Use a calculadora para informar o peso.`);
+        return;
+      }
+      if (r.tipo === "desconhecido") {
+        setCadastroScan({ codigo: r.codigo, nome: "", preco: "", unidade: "un" });
+        return;
+      }
+      aplicarPrecoLido(r.preco);
+      setAvisoScan(`${r.produto.nome} · ${formatarReais(r.preco)} adicionado. Leia de novo para somar outra unidade.`);
+    } catch (e) {
+      setAvisoScan(e instanceof Error ? e.message : "Não foi possível ler o código.");
+    }
+  }
+
+  async function salvarProdutoDoScan() {
+    if (!cadastroScan) return;
+    const nome = cadastroScan.nome.trim();
+    const preco = Number(cadastroScan.preco.replace(/\./g, "").replace(",", ".")) || 0;
+    if (!nome || preco <= 0) { setAvisoScan("Informe o nome e o preço do produto."); return; }
+    if (cadastroScan.unidade.trim().toLowerCase() === "kg" || /quilo/.test(cadastroScan.unidade.toLowerCase())) {
+      setAvisoScan("Produtos vendidos por quilo não usam o leitor. Cadastre no cardápio e use a calculadora.");
+      return;
+    }
+    const id = gerarId();
+    await salvarProduto({
+      id, nome, preco, unidade: cadastroScan.unidade.trim() || "un",
+      ordem: produtos.length + 1, criado_em: agoraIso(),
+      preco_promocional: null, promo_inicia_em: null, promo_expira_em: null,
+      codigos_barras: [cadastroScan.codigo],
+    });
+    aplicarPrecoLido(preco);
+    setAvisoScan(`${nome} cadastrado e ${formatarReais(preco)} adicionado à venda.`);
+    setCadastroScan(null);
+  }
+
   const dataHoje = new Date().toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
   const encomendasPendentes = encomendas.filter((e) => !e.excluido && statusDeEncomenda(e) === "pendente");
   const encomendasAtrasadas = encomendasPendentes.filter((e) => encomendaAtrasada(e));
@@ -192,8 +250,29 @@ export function Calculadora() {
 
       <div className="row wrap" style={{ margin: "12px 0" }}>
         <button className="btn grow" onClick={limpar}>Limpar</button>
+        <button className="btn btn-lima grow" data-testid="ler-codigo-venda" onClick={() => void lerProduto()}>Ler código de barras</button>
         <button className="btn btn-primary grow" data-testid="registrar-venda" disabled={valor <= 0} onClick={() => void registrar()}>Registrar venda</button>
       </div>
+      {avisoScan && <p className="muted small" data-testid="aviso-scan">{avisoScan}</p>}
+      {cadastroScan && (
+        <div className="card col" data-testid="cadastro-codigo-desconhecido">
+          <h3>Código não cadastrado</h3>
+          <p className="muted small">O código <strong>{cadastroScan.codigo}</strong> ainda não está no cardápio. Cadastre para adicionar o preço à venda. Só produtos vendidos por unidade (não por quilo).</p>
+          <label className="field">Nome
+            <input className="input" data-testid="scan-novo-nome" value={cadastroScan.nome} onChange={(e) => setCadastroScan({ ...cadastroScan, nome: e.target.value })} />
+          </label>
+          <label className="field">Preço
+            <input className="input num" data-testid="scan-novo-preco" value={cadastroScan.preco} onChange={(e) => setCadastroScan({ ...cadastroScan, preco: e.target.value })} />
+          </label>
+          <label className="field">Unidade
+            <input className="input" data-testid="scan-novo-unidade" value={cadastroScan.unidade} onChange={(e) => setCadastroScan({ ...cadastroScan, unidade: e.target.value })} placeholder="un, bandeja..." />
+          </label>
+          <div className="row">
+            <button type="button" className="btn grow" onClick={() => setCadastroScan(null)}>Agora não</button>
+            <button type="button" className="btn btn-primary grow" data-testid="scan-salvar-produto" onClick={() => void salvarProdutoDoScan()}>Cadastrar e somar</button>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h3>Cobrança manual</h3>

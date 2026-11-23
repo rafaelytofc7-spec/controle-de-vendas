@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import {
   bancoTemDados,
   exportarDados,
@@ -17,6 +17,7 @@ import {
   listarReabastecimentos,
   listarVendas,
   obterConfig,
+  aoHaverPendente,
   salvarConfig,
   upsertAtividade,
   setFirebaseConfig,
@@ -32,8 +33,8 @@ import { agoraIso } from "./lib/datas";
 import { gerarId, montarBackup, normalizarBackup, parseBackup, verificarBackupOficial, type DadosNormalizados } from "./lib/importacao";
 import { NOME_LOJA_PADRAO } from "./lib/marca";
 import { PREFS_NOTIFICACAO_PADRAO, type EstadoEquipe, type Atividade, Cobranca, ConfiguracaoLoja, Encomenda, Entrega, FirebaseWebConfig, FormaCobranca, MembroLoja, Produto, Reabastecimento, StatusEntrega, Venda } from "./lib/types";
-import { configEfetiva, configValida, iniciarFirebase } from "./lib/firebase";
-import { estadoEquipeLocal, sincronizar, type ProgressoSync } from "./lib/sync";
+import { configEfetiva, configValida, getFirebase, iniciarFirebase } from "./lib/firebase";
+import { enviarPendentes, estadoEquipeLocal, ouvirLoja, sincronizar, type ProgressoSync } from "./lib/sync";
 import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
 import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
 import { entrarComPin, recuperarLideranca } from "./lib/acesso";
@@ -93,8 +94,11 @@ interface Store {
   progressoSync?: ProgressoSync;
   erroSync?: string;
   tentarSync: () => Promise<void>;
-  entrarNaNuvem: (nome: string, pin: string) => Promise<{ primeiraVez: boolean; codigoRecuperacao?: string }>;
+  statusNuvem: "offline" | "sincronizando" | "sincronizado";
+  avisoImportados?: string;
+  entrarNaNuvem: (nome: string, pin: string) => Promise<{ primeiraVez: boolean; codigoRecuperacao?: string; retidosImportados?: number }>;
   recuperarLider: (nome: string, pin: string, codigo: string) => Promise<void>;
+  sairDaNuvem: () => Promise<void>;
   codigoRecuperacao?: string;
   ehDono: boolean;
   bloqueado: boolean;
@@ -143,6 +147,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [equipe, setEquipe] = useState<EstadoEquipe>();
   const [codigoRecuperacao, setCodigoRecuperacao] = useState<string>();
   const [prefsNotificacao, setPrefsNotificacao] = useState<PrefsNotificacao>(PREFS_NOTIFICACAO_PADRAO);
+  const [avisoImportados, setAvisoImportados] = useState<string>();
 
   const recarregar = useCallback(async () => {
     const tem = await bancoTemDados();
@@ -152,6 +157,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setFirebaseOverride(configValida(salva));
     setFirebaseCfg(cfgFb);
     try { iniciarFirebase(cfgFb); } catch { /* ignore */ }
+    const [eqPre, codigoPre] = await Promise.all([
+      estadoEquipeLocal(), getMeta<string>("codigo_recuperacao"),
+    ]);
+    setEquipe(eqPre);
+    setCodigoRecuperacao(codigoPre);
+    setEhDono(Boolean(eqPre?.ehDono || eqPre?.ehLider));
+    setBloqueado(Boolean(eqPre?.bloqueado));
     if (!tem) {
       setPronto(true);
       return;
@@ -195,13 +207,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     } catch { return; }
   }, [firebaseCfg]);
 
+  const tentarSyncRef = useRef<() => Promise<void>>(async () => {});
   const importarArquivo = useCallback(async (raw: unknown, substituir = false) => {
     const backup = parseBackup(raw);
     const dados = normalizarBackup(backup);
     await importarDados(dados, substituir);
     await recarregar();
+    if (usuario && online && configValida(firebaseCfg)) {
+      void tentarSyncRef.current();
+    }
     return dados;
-  }, [recarregar]);
+  }, [recarregar, usuario, online, firebaseCfg]);
 
 
   const anotar = useCallback(async (acao: "criar" | "editar" | "excluir", colecao: string, registroId: string, resumo: string) => {
@@ -210,8 +226,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setAtividades((xs) => [a, ...xs].slice(0, 500));
   }, [loja, usuario]);
 
+  const usuarioDaSessao = () => {
+    if (usuario) return usuario;
+    try { return getFirebase().auth.currentUser; } catch { return null; }
+  };
+
   const registrarVenda = useCallback(async (valor: number) => {
-    const v: Venda = { id: gerarId(), loja, valor, criado_em: agoraIso(), atualizado_em: agoraIso(), ...autoriaNova(usuario) };
+    const v: Venda = { id: gerarId(), loja, valor, criado_em: agoraIso(), atualizado_em: agoraIso(), ...autoriaNova(usuarioDaSessao()) };
     await upsertVenda(v);
     setVendas((xs) => [v, ...xs]);
     await anotar("criar", "vendas", v.id, `Venda de ${valor.toFixed(2)}`);
@@ -501,24 +522,58 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const entrarNaNuvem = useCallback(async (nome: string, pin: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
-    iniciarFirebase(firebaseCfg);
-    const estado = await entrarComPin(nome, pin);
-    setEquipe(estado);
-    setEhDono(Boolean(estado.ehLider));
-    setBloqueado(Boolean(estado.bloqueado));
-    if (estado.codigoRecuperacao) setCodigoRecuperacao(estado.codigoRecuperacao);
+    const { auth } = iniciarFirebase(firebaseCfg);
+    const estadoPin = await entrarComPin(nome, pin);
+    setEquipe(estadoPin);
+    setEhDono(Boolean(estadoPin.ehLider));
+    setBloqueado(Boolean(estadoPin.bloqueado));
+    if (estadoPin.codigoRecuperacao) setCodigoRecuperacao(estadoPin.codigoRecuperacao);
+    const user = auth.currentUser;
+    if (user) setUsuario(user);
+    let retidosImportados = 0;
+    if (user && navigator.onLine) {
+      setSyncando(true); setErroSync(undefined);
+      try {
+        const estado = await sincronizar(LOJA_NUVEM_ID, user, setProgressoSync);
+        const { retidosImportados: retidos, enviadosMerge: _e, ...eq } = estado;
+        retidosImportados = retidos;
+        setEquipe(eq);
+        setEhDono(eq.ehDono || eq.ehLider);
+        setBloqueado(eq.bloqueado);
+        if (retidos > 0) {
+          setAvisoImportados("Este aparelho tem um histórico antigo que só o Admin pode enviar à nuvem. Peça ao Admin para entrar primeiro e enviar o histórico. Os registros continuam neste aparelho.");
+        } else {
+          setAvisoImportados(undefined);
+        }
+      } finally {
+        setSyncando(false);
+      }
+    }
     await recarregar();
-    return { primeiraVez: estado.primeiraVez, codigoRecuperacao: estado.codigoRecuperacao };
+    return { primeiraVez: estadoPin.primeiraVez, codigoRecuperacao: estadoPin.codigoRecuperacao, retidosImportados };
   }, [firebaseCfg, recarregar]);
 
   const recuperarLider = useCallback(async (nome: string, pin: string, codigo: string) => {
     if (!firebaseCfg || !configValida(firebaseCfg)) throw new Error("A configuração da nuvem não está disponível.");
-    iniciarFirebase(firebaseCfg);
-    const estado = await recuperarLideranca(nome, pin, codigo);
-    setEquipe(estado);
+    const { auth } = iniciarFirebase(firebaseCfg);
+    const estadoRec = await recuperarLideranca(nome, pin, codigo);
+    setEquipe(estadoRec);
     setEhDono(true);
     setBloqueado(false);
     setCodigoRecuperacao(codigo.trim().toUpperCase());
+    const user = auth.currentUser;
+    if (user) setUsuario(user);
+    if (user && navigator.onLine) {
+      setSyncando(true);
+      try {
+        const estado = await sincronizar(LOJA_NUVEM_ID, user, setProgressoSync);
+        const { retidosImportados, enviadosMerge: _e, ...eq } = estado;
+        setEquipe(eq);
+        if (retidosImportados > 0) {
+          setAvisoImportados("Este aparelho tem um histórico antigo que só o Admin pode enviar à nuvem. Peça ao Admin para entrar primeiro e enviar o histórico. Os registros continuam neste aparelho.");
+        }
+      } finally { setSyncando(false); }
+    }
     await recarregar();
   }, [firebaseCfg, recarregar]);
 
@@ -527,10 +582,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setSyncando(true); setErroSync(undefined);
     const desde = await getMeta<string>("ultimo_sync");
     try {
-      const estado = await sincronizar(LOJA_NUVEM_ID, usuario, setProgressoSync);
+      const { retidosImportados, enviadosMerge: _enviados, ...estado } = await sincronizar(LOJA_NUVEM_ID, usuario, setProgressoSync);
       setEquipe(estado);
       setEhDono(estado.ehDono || estado.ehLider);
       setBloqueado(estado.bloqueado);
+      if (retidosImportados > 0) {
+        setAvisoImportados("Este aparelho tem um histórico antigo que só o Admin pode enviar à nuvem. Peça ao Admin para entrar primeiro e enviar o histórico. Os registros continuam neste aparelho.");
+      }
       await recarregar();
       const [en, mem, v, prefs] = await Promise.all([
         listarEncomendas(), listarMembros(), listarVendas(), carregarPrefsNotificacao(),
@@ -549,10 +607,76 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setSyncando(false);
     }
   }, [usuario, online, firebaseCfg, recarregar, prefsNotificacao]);
+  tentarSyncRef.current = tentarSync;
+
+  const sairDaNuvem = useCallback(async () => {
+    if (firebaseCfg && configValida(firebaseCfg)) {
+      try { await signOut(iniciarFirebase(firebaseCfg).auth); } catch { /* ignore */ }
+    }
+    await setMeta("equipe", null);
+    setEquipe(undefined);
+    setUsuario(null);
+    setEhDono(false);
+    setBloqueado(false);
+  }, [firebaseCfg]);
+
+  const envioTimer = useRef<number>(0);
+  const agendarEnvio = useCallback(() => {
+    if (!navigator.onLine) return;
+    window.clearTimeout(envioTimer.current);
+    envioTimer.current = window.setTimeout(() => {
+      void (async () => {
+        let user = usuario;
+        if (!user) {
+          try { user = getFirebase().auth.currentUser; } catch { user = null; }
+        }
+        if (!user) return;
+        setSyncando(true);
+        try {
+          const eq = await estadoEquipeLocal();
+          await enviarPendentes(LOJA_NUVEM_ID, Boolean(eq?.ehDono || eq?.ehLider));
+          setErroSync(undefined);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Falha ao enviar alterações.";
+          console.error("envio pendentes", e);
+          setErroSync(msg);
+        } finally {
+          setSyncando(false);
+        }
+      })();
+    }, 400);
+  }, [usuario]);
 
   useEffect(() => {
-    if (usuario && online && pronto && temDados) void tentarSync();
+    aoHaverPendente(() => { agendarEnvio(); });
+    return () => aoHaverPendente(undefined);
+  }, [agendarEnvio]);
+
+  useEffect(() => {
+    if (usuario && online && pronto && (temDados || equipe)) void tentarSync();
   }, [usuario, online, pronto, temDados]); // eslint-disable-line
+
+  useEffect(() => {
+    const aoVoltar = () => {
+      if (document.visibilityState === "visible" && usuario && navigator.onLine) void tentarSync();
+    };
+    const aoOnline = () => { if (usuario) void tentarSync(); };
+    document.addEventListener("visibilitychange", aoVoltar);
+    window.addEventListener("online", aoOnline);
+    return () => {
+      document.removeEventListener("visibilitychange", aoVoltar);
+      window.removeEventListener("online", aoOnline);
+    };
+  }, [usuario, tentarSync]);
+
+  useEffect(() => {
+    if (!usuario || !online || !pronto || !firebaseCfg) return;
+    let unsub: (() => void) | undefined;
+    try {
+      unsub = ouvirLoja(LOJA_NUVEM_ID, () => { void recarregar(); });
+    } catch { /* ainda sem permissão */ }
+    return () => { unsub?.(); };
+  }, [usuario, online, pronto, firebaseCfg, recarregar]);
 
   useEffect(() => {
     if (!usuario || !online || !pronto || !temDados || !firebaseCfg) return;
@@ -587,19 +711,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [pronto, temDados, encomendas, prefsNotificacao]);
 
   const agregados = useMemo(() => agregarVendas(vendas), [vendas]);
+  const statusNuvem = !online ? "offline" as const : syncando ? "sincronizando" as const : "sincronizado" as const;
+
 
   const value = useMemo<Store>(() => ({
     pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, confirmarEncomenda, cancelarEncomenda, marcarPagamentoEncomenda, excluirEncomenda, prefsNotificacao, salvarPrefs,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, entrarNaNuvem, recuperarLider, codigoRecuperacao,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
     ehDono, bloqueado, membros, atividades, equipe, agregados,
   }), [pronto, temDados, loja, config, vendas, produtos, entregas, encomendas, cobrancas, reabastecimentos,
     recarregar, importarArquivo, registrarVenda, excluirVenda, salvarProduto, excluirProduto,
     salvarEntrega, statusEntrega, excluirEntrega, salvarEncomenda, concluirEncomenda, confirmarEncomenda, cancelarEncomenda, marcarPagamentoEncomenda, excluirEncomenda, prefsNotificacao, salvarPrefs,
     registrarReabastecimento, excluirReabastecimento, registrarCobranca, confirmarCobranca, cancelarCobranca,
-    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, entrarNaNuvem, recuperarLider, codigoRecuperacao,
+    atualizarConfig, firebaseCfg, salvarFirebase, limparFirebase, firebaseOverride, usuario, online, syncando, progressoSync, erroSync, tentarSync, statusNuvem, avisoImportados, entrarNaNuvem, recuperarLider, sairDaNuvem, codigoRecuperacao,
     ehDono, bloqueado, membros, atividades, equipe, agregados]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

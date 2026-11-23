@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { passarDaPorta } from "./helpers";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -8,6 +9,7 @@ test("mostra o total de cada mês e o total geral", async ({ page }) => {
   test.skip(!existsSync(ATUAL), "arquivo de atualização ausente");
   test.setTimeout(120_000);
   await page.goto("./");
+  await passarDaPorta(page);
   await page.getByTestId("import-file").setInputFiles(ATUAL);
   await expect(page.getByTestId("calc-valor")).toBeVisible({ timeout: 90_000 });
   await page.getByRole("link", { name: "Mais" }).click();

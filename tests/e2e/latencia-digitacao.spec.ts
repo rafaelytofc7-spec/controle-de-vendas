@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { passarDaPorta } from "./helpers";
 import { existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -15,6 +16,7 @@ test("mede latência ao digitar com CPU 6x mais lenta", async ({ page }) => {
   await client.send("Emulation.setCPUThrottlingRate", { rate: THROTTLE });
 
   await page.goto("./");
+  await passarDaPorta(page);
   await page.getByTestId("import-file").setInputFiles(OFICIAL);
   await expect(page.getByTestId("calc-valor")).toBeVisible({ timeout: 90_000 });
 

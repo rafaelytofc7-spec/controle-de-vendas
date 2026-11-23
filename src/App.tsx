@@ -13,8 +13,9 @@ import { Ajustes } from "./pages/Ajustes";
 import { Administracao } from "./pages/Administracao";
 import { Mais } from "./pages/Mais";
 import { Equipe } from "./pages/Equipe";
+import { EntradaNuvem } from "./pages/EntradaNuvem";
 import { NOME_LOJA_PADRAO } from "./lib/marca";
-import { APP_VERSION, buscarVersaoRemota, temAtualizacao } from "./lib/versao";
+import { APP_VERSION, APK_RELEASE_URL, buscarVersaoRemota, temAtualizacao } from "./lib/versao";
 import { useEffect, useState } from "react";
 import { alternarTema, aplicarTema, lerTema, type Tema } from "./lib/tema";
 import { Icone } from "./components/Icone";
@@ -36,7 +37,7 @@ const TITULOS: Record<string, { t: string; s: string }> = {
 };
 
 function Shell() {
-  const { pronto, temDados, config, online, syncando, usuario, bloqueado } = useStore();
+  const { pronto, temDados, config, bloqueado, equipe, statusNuvem, avisoImportados, erroSync } = useStore();
   const loc = useLocation();
   const meta = loc.pathname.startsWith("/relatorios/")
     ? { t: "Relatório do mês", s: "Totais por dia" }
@@ -55,6 +56,9 @@ function Shell() {
     });
     return () => ac.abort();
   }, []);
+
+  const entrou = Boolean(equipe?.liderUid);
+  const rotuloStatus = statusNuvem === "offline" ? "Offline" : statusNuvem === "sincronizando" ? "Sincronizando…" : "Sincronizado";
 
   if (!pronto) {
     return (
@@ -75,6 +79,7 @@ function Shell() {
       </div>
     );
   }
+  if (!entrou) return <EntradaNuvem />;
   if (!temDados) return <PrimeiraExecucao />;
 
   return (
@@ -93,16 +98,19 @@ function Shell() {
           aria-label={tema === "escuro" ? "Usar tema claro" : "Usar tema escuro"}
           onClick={() => setTema(alternarTema())}
         >{tema === "escuro" ? "Claro" : "Escuro"}</button>
-        <div className="small status-nuvem" style={{ textAlign: "right", opacity: 0.9 }}>
-          {!online ? "Offline" : syncando ? "Sincronizando…" : usuario ? "Nuvem ligada" : "Local"}
+        {erroSync && <div className="small" data-testid="erro-sync" style={{ textAlign: "right", color: "var(--tomate-2)" }}>{erroSync}</div>}
+        <div className="small status-nuvem" data-testid="status-nuvem" data-status={statusNuvem} style={{ textAlign: "right", opacity: 0.9 }}>
+          {rotuloStatus}
           <div>v{APP_VERSION}</div>
         </div>
       </header>
       {bloqueado && <div className="banner erro aviso-atualizacao">Sua conta está bloqueada nesta loja. Os dados locais continuam no aparelho, mas a nuvem não aceita alterações.</div>}
       <BannerEncomendasAtrasadas />
+      {avisoImportados && <div className="banner aviso-atualizacao" data-testid="aviso-importados">{avisoImportados}</div>}
       {atualizacao && (
-        <div className="banner aviso-atualizacao">
-          Há uma versão nova ({atualizacao}). Atualize o site ou baixe o APK em Mais → Ajustes.
+        <div className="banner aviso-atualizacao" data-testid="aviso-nova-versao">
+          Há uma versão nova ({atualizacao}).{" "}
+          <a href={APK_RELEASE_URL} target="_blank" rel="noreferrer">Baixar o APK</a>
         </div>
       )}
       <main className="page">

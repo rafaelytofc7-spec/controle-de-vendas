@@ -2,9 +2,9 @@
 
 A nuvem já vem configurada neste aplicativo (projeto `controle-de-vendas-bddb9`). Não é preciso colar a configuração web. O acesso deixou de ser por e-mail: o primeiro aparelho que entra com o PIN vira o líder, e os demais usam o mesmo PIN e o mesmo banco.
 
-## 1.6.0
+## 1.6.0 e 1.7.0
 
-A 1.6.0 usa as mesmas regras da 1.5.0. Não é preciso republicar as regras se a 1.5.0 já estiver no ar.
+A 1.6.0 e a 1.7.0 usam as mesmas regras da 1.5.0. Não é preciso republicar as regras se a 1.5.0 já estiver no ar.
 
 ## Mudanças no Console do Firebase (obrigatórias antes da 1.5.0)
 

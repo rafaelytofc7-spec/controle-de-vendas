@@ -21,7 +21,7 @@ export function Equipe() {
           {online ? "Quem usou o aplicativo nos últimos 2 minutos aparece como online." : "Sem internet, a lista é a última vista neste aparelho. Você aparece como online aqui."}
         </p>
         {lista.length === 0 ? (
-          <EstadoVazio icone="admin" titulo="Ninguém na equipe ainda" texto="Entre com o PIN em Ajustes → Nuvem. O primeiro aparelho vira Admin e os outros aparecem aqui." />
+          <EstadoVazio icone="admin" titulo="Ninguém na equipe ainda" texto="Entre com o seu nome e o PIN na tela inicial. O primeiro aparelho vira Admin e os outros aparecem aqui." />
         ) : (
           <ul className="lista" data-testid="lista-equipe">
             {lista.map((m) => {

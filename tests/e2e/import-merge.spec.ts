@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { passarDaPorta } from "./helpers";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -9,6 +10,7 @@ test("mescla o arquivo de atualização sem duplicar vendas", async ({ page }) =
   test.skip(!existsSync(ANTIGO) || !existsSync(ATUAL), "arquivos de importação ausentes");
   test.setTimeout(180_000);
   await page.goto("./");
+  await passarDaPorta(page);
   await page.getByTestId("import-file").setInputFiles(ANTIGO);
   await expect(page.getByTestId("calc-valor")).toBeVisible({ timeout: 90_000 });
   await page.getByRole("link", { name: "Caixa" }).click();

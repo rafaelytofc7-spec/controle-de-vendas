@@ -9,15 +9,15 @@ No Console do Firebase (projeto controle-de-vendas-bddb9, conta dona do projeto)
 Enquanto essas regras novas não forem publicadas, não instale a 1.5.0 no lugar da 1.4.0: o aplicativo antigo (e-mail) deixa de sincronizar, e o novo (PIN) ainda não entra.
 
 No celular ou no site (depois das regras)
-1. Instale o APK 1.6.0 (ou abra o site atualizado) e, no primeiro uso, importe o arquivo de backup se ainda não tiver os dados neste aparelho (caixa-importacao-2026-11-22-2049.json, mesclar pelo id).
-2. Abra Mais → Ajustes → Nuvem.
-3. No primeiro aparelho, escreva o seu nome e o PIN combinado (4 a 8 números) e toque em Entrar com o PIN. Esse aparelho vira o Admin. Anote o código de recuperação de 8 caracteres e guarde fora do telefone.
-4. Toque em Sincronizar agora. Os dados locais sobem para a nuvem em lotes. Todos que entram com o mesmo PIN passam a usar o mesmo banco.
-5. Nos outros aparelhos, cada pessoa escreve o próprio nome e o mesmo PIN. Não é preciso convite por e-mail.
+1. Instale o APK 1.7.0 (ou abra o site atualizado) e, no primeiro uso, importe o arquivo de backup se ainda não tiver os dados neste aparelho (caixa-importacao-2026-11-22-2049.json, mesclar pelo id).
+2. Na primeira abertura aparece a tela de entrada. É preciso ter internet nesta primeira vez.
+3. No primeiro aparelho, escreva o seu nome e o PIN combinado (4 a 8 números) e toque em Entrar. Esse aparelho vira o Admin. Anote o código de recuperação de 8 caracteres e guarde fora do telefone. Se este aparelho já tinha vendas, elas sobem sozinhas para o banco compartilhado.
+4. A sincronização começa sozinha. Não é preciso ir em Ajustes nem tocar em sincronizar. Depois o aplicativo funciona sem internet e envia as mudanças quando a conexão voltar.
+5. Nos outros aparelhos, cada pessoa escreve o próprio nome e o mesmo PIN na tela de entrada. Todos passam a usar o mesmo banco.
 6. O Admin gerencia a equipe, troca o PIN, vê atividades e pode passar o papel de Admin em Mais → Administração.
 
 Se o aparelho do Admin for perdido
-Na tela Nuvem, use “Tenho um código de recuperação”, informe o PIN e o código de 8 caracteres. O papel de Admin passa para o aparelho atual.
+Na tela de entrada (ou em Ajustes → Nuvem), use “Tenho um código de recuperação”, informe o PIN e o código de 8 caracteres. O papel de Admin passa para o aparelho atual.
 
 Substituição (opcional)
 Se quiser usar outro projeto Firebase, cole o objeto de configuração web em Mais → Ajustes → Nuvem e toque em “Salvar substituição”. Ligue também o acesso anônimo e publique as mesmas regras nesse projeto. Para voltar, use “Usar nuvem padrão”.

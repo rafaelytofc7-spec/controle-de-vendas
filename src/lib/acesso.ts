@@ -65,11 +65,12 @@ async function registrarTentativa(uid: string): Promise<void> {
   const { tentativasRef } = refs(uid);
   const snap = await getDoc(tentativasRef);
   if (!snap.exists()) {
+    const liberadaEm = Date.now() + 2_500;
     await setDoc(tentativasRef, {
       falhas: 1,
-      proximaTentativa: Timestamp.fromMillis(Date.now() + 1_000),
+      proximaTentativa: Timestamp.fromMillis(liberadaEm),
     });
-    await esperarAte(Date.now() + 1_000);
+    await esperarAte(liberadaEm + 200);
     return;
   }
   const d = snap.data() as { falhas: number; proximaTentativa: Timestamp; bloqueadoAte?: Timestamp };
@@ -80,13 +81,14 @@ async function registrarTentativa(uid: string): Promise<void> {
     const s = Math.ceil((bloqueadoAte - agora) / 1000);
     throw new Error(`Muitas tentativas. Espere ${s} segundos e tente de novo.`);
   }
-  if (proxima > agora) await esperarAte(proxima);
+  if (proxima > agora) await esperarAte(proxima + 200);
   if (d.falhas >= 15 && bloqueadoAte <= Date.now()) {
+    const liberadaEm = Date.now() + 2_500;
     await setDoc(tentativasRef, {
       falhas: 1,
-      proximaTentativa: Timestamp.fromMillis(Date.now() + 1_000),
+      proximaTentativa: Timestamp.fromMillis(liberadaEm),
     });
-    await esperarAte(Date.now() + 1_000);
+    await esperarAte(liberadaEm + 200);
     return;
   }
   const falhas = d.falhas + 1;
@@ -99,7 +101,7 @@ async function registrarTentativa(uid: string): Promise<void> {
   }
   await setDoc(tentativasRef, payload);
   const espera = (payload.proximaTentativa as Timestamp).toMillis();
-  if (espera > Date.now()) await esperarAte(espera);
+  if (espera > Date.now()) await esperarAte(espera + 200);
 }
 
 function esperarAte(ts: number): Promise<void> {
@@ -115,6 +117,16 @@ async function cacheEquipe(estado: EstadoEquipe, membro: MembroLoja, codigo?: st
   return estado;
 }
 
+async function lerSePermitido(ref: ReturnType<typeof doc>) {
+  try {
+    return await getDoc(ref);
+  } catch (e) {
+    // Non-members cannot read the store or the member list; treat as "not found".
+    if ((e as { code?: string }).code === "permission-denied") return null;
+    throw e;
+  }
+}
+
 export async function entrarComPin(nomeBruto: string, pin: string): Promise<EstadoEquipe & { codigoRecuperacao?: string; primeiraVez: boolean }> {
   const nome = nomeBruto.trim();
   if (!nomeValido(nome)) throw new Error("Informe um nome de 2 a 40 letras.");
@@ -122,38 +134,16 @@ export async function entrarComPin(nomeBruto: string, pin: string): Promise<Esta
   const user = await garantirAuth();
   try { await updateProfile(user, { displayName: nome }); } catch { /* ignore */ }
   const { loja, lojaRef, acessoRef, ingressoRef, membroRef, tentativasRef } = refs(user.uid);
-  const lojaSnap = await getDoc(lojaRef);
   const agora = agoraIso();
+  void loja;
 
-  if (!lojaSnap.exists()) {
-    const codigo = gerarCodigoRecuperacao();
-    const batch = writeBatch(refs(user.uid).db);
-    batch.set(lojaRef, { liderUid: user.uid, criado_em: agora });
-    batch.set(acessoRef, { pin, codigoRecuperacao: codigo, atualizado_em: agora });
-    const membro: MembroLoja = {
-      uid: user.uid, nome, papel: "lider", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
-    };
-    batch.set(membroRef, membro);
-    try {
-      await batch.commit();
-    } catch (e) {
-      // Another device may have become the leader first. Try joining instead.
-      const deNovo = await getDoc(lojaRef);
-      if (!deNovo.exists()) throw e;
-      return entrarComPin(nome, pin);
-    }
-    const estado: EstadoEquipe = {
-      ehDono: true, ehLider: true, bloqueado: false, liderUid: user.uid, meuNome: nome,
-    };
-    await cacheEquipe(estado, membro, codigo);
-    return { ...estado, codigoRecuperacao: codigo, primeiraVez: true };
-  }
-
-  const liderUid = (lojaSnap.data() as { liderUid?: string }).liderUid ?? "";
-  const membroSnap = await getDoc(membroRef);
-  if (membroSnap.exists()) {
+  // Already in the team (same anonymous account): the rules allow reading.
+  const membroSnap = await lerSePermitido(membroRef);
+  if (membroSnap?.exists()) {
     const atual = membroSnap.data() as MembroLoja;
     if (atual.bloqueado) throw new Error("Este aparelho foi bloqueado. Fale com o Admin.");
+    const lojaSnap = await getDoc(lojaRef);
+    const liderUid = (lojaSnap.data() as { liderUid?: string } | undefined)?.liderUid ?? "";
     const membro: MembroLoja = { ...atual, nome, ultimoAcesso: agora };
     await setDoc(membroRef, { nome, ultimoAcesso: agora }, { merge: true });
     const estado: EstadoEquipe = {
@@ -163,24 +153,51 @@ export async function entrarComPin(nomeBruto: string, pin: string): Promise<Esta
     return { ...estado, primeiraVez: false };
   }
 
+  // First device: create the store in one batch. Do not getDoc the store first —
+  // the rules hide it from anyone who is not a member, even when it does not exist.
+  const codigo = gerarCodigoRecuperacao();
+  const membroLider: MembroLoja = {
+    uid: user.uid, nome, papel: "lider", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
+  };
+  const batch = writeBatch(refs(user.uid).db);
+  batch.set(lojaRef, { liderUid: user.uid, criado_em: agora });
+  batch.set(acessoRef, { pin, codigoRecuperacao: codigo, atualizado_em: agora });
+  batch.set(membroRef, membroLider);
+  try {
+    await batch.commit();
+    const estado: EstadoEquipe = {
+      ehDono: true, ehLider: true, bloqueado: false, liderUid: user.uid, meuNome: nome,
+    };
+    await cacheEquipe(estado, membroLider, codigo);
+    return { ...estado, codigoRecuperacao: codigo, primeiraVez: true };
+  } catch (e) {
+    // If the store already exists, create is denied (not already-exists) because
+    // non-members cannot read or update the loja document. Fall through and join
+    // with the PIN. If the store really is missing, the ticket write fails next.
+    void e;
+  }
+
+  // Join an existing store by presenting the PIN as a ticket. Rules compare it
+  // to the private PIN; the client never reads that document.
   await registrarTentativa(user.uid);
   try {
-    await setDoc(ingressoRef, { pin, nome, em: agora });
+    await setDoc(ingressoRef, { pin, nome, em: agoraIso() });
   } catch {
     throw new Error("PIN incorreto ou muitas tentativas. Espere um pouco e tente de novo.");
   }
-  const papel: PapelMembro = liderUid === user.uid ? "lider" : "membro";
   const membro: MembroLoja = {
-    uid: user.uid, nome, papel, bloqueado: false, ultimoAcesso: agora, criado_em: agora,
+    uid: user.uid, nome, papel: "membro", bloqueado: false, ultimoAcesso: agoraIso(), criado_em: agora,
   };
   await setDoc(membroRef, membro);
+  const lojaSnap = await getDoc(lojaRef);
+  const liderUid = (lojaSnap.data() as { liderUid?: string } | undefined)?.liderUid ?? "";
   try { await deleteDoc(ingressoRef); } catch { /* ignore */ }
   try { await setDoc(tentativasRef, { falhas: 0, proximaTentativa: Timestamp.now() }); } catch { /* ignore */ }
+  const ehLider = liderUid === user.uid;
   const estado: EstadoEquipe = {
-    ehDono: papel === "lider", ehLider: papel === "lider", bloqueado: false, liderUid, meuNome: nome,
+    ehDono: ehLider, ehLider, bloqueado: false, liderUid, meuNome: nome,
   };
-  await cacheEquipe(estado, membro);
-  void loja;
+  await cacheEquipe(estado, { ...membro, papel: ehLider ? "lider" : "membro" });
   return { ...estado, primeiraVez: false };
 }
 
@@ -193,16 +210,20 @@ export async function recuperarLideranca(nomeBruto: string, pin: string, codigoB
   const user = await garantirAuth();
   try { await updateProfile(user, { displayName: nome }); } catch { /* ignore */ }
   const { lojaRef, recuperacaoRef, membroRef } = refs(user.uid);
-  const lojaSnap = await getDoc(lojaRef);
-  if (!lojaSnap.exists()) throw new Error("A loja ainda não existe na nuvem. Entre com o PIN no primeiro aparelho.");
+  // Do not read the store first: non-members are not allowed to. The recovery
+  // ticket and the leadership update are authorized by the rules themselves.
   await registrarTentativa(user.uid);
   try {
     await setDoc(recuperacaoRef, { pin, codigo, em: agoraIso() });
   } catch {
-    throw new Error("PIN ou código de recuperação incorretos.");
+    throw new Error("PIN ou código de recuperação incorretos, ou a loja ainda não existe na nuvem.");
   }
   const agora = agoraIso();
-  await setDoc(lojaRef, { liderUid: user.uid, atualizado_em: agora }, { merge: true });
+  try {
+    await setDoc(lojaRef, { liderUid: user.uid, atualizado_em: agora }, { merge: true });
+  } catch {
+    throw new Error("A loja ainda não existe na nuvem. Entre com o PIN no primeiro aparelho.");
+  }
   const membro: MembroLoja = {
     uid: user.uid, nome, papel: "lider", bloqueado: false, ultimoAcesso: agora, criado_em: agora,
   };

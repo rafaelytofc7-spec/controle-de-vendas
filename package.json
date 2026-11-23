@@ -1,7 +1,7 @@
 {
   "name": "controle-de-vendas",
   "private": true,
-  "version": "1.6.0",
+  "version": "1.7.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,17 +10,22 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:all": "vitest run && playwright test",
+    "test:all": "vitest run && playwright test && npm run test:e2e:nuvem",
     "build:capacitor": "CAPACITOR=1 tsc --noEmit && CAPACITOR=1 vite build",
     "cap:sync": "npm run build:capacitor && npx cap sync android",
-    "test:rules": "vitest run --config vitest.rules.config.ts"
+    "test:rules": "vitest run --config vitest.rules.config.ts",
+    "test:e2e:nuvem": "firebase emulators:exec --only auth,firestore --project controle-de-vendas-bddb9 --config firebase.nuvem.json \"npm run test:e2e:nuvem:run\"",
+    "test:e2e:nuvem:run": "VITE_FIREBASE_EMULATOR=1 VITE_FIRESTORE_EMULATOR_PORT=18080 VITE_AUTH_EMULATOR_PORT=19099 vite build --outDir /tmp/cv-dist-nuvem && playwright test -c playwright.nuvem.config.ts"
   },
   "dependencies": {
+    "@capacitor-mlkit/barcode-scanning": "^8.2.2",
     "@capacitor/core": "^8.6.2",
     "@capacitor/filesystem": "^8.1.5",
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/share": "^8.0.3",
     "@fontsource/nunito": "^5.3.0",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "firebase": "^13.4.0",
     "idb": "^8.0.4",
     "react": "^19.3.1",

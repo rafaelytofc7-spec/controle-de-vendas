@@ -104,9 +104,15 @@ export async function resetarBanco(): Promise<void> {
   await deleteDB(DB_NAME);
 }
 
+let ouvintePendentes: (() => void) | undefined;
+export function aoHaverPendente(fn: (() => void) | undefined): void {
+  ouvintePendentes = fn;
+}
+
 async function marcarPendente(colecao: string, id: string, acao: "upsert" | "delete") {
   const d = await db();
   await d.put("pendentes", { colecao, id, acao, em: agoraIso() });
+  ouvintePendentes?.();
 }
 
 export async function listarVendas(): Promise<Venda[]> {

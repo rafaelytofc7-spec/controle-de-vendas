@@ -1,3 +1,4 @@
+import { normalizarListaCodigos } from "./codigoBarras";
 import { enderecoDeTexto } from "./encomendas";
 import { arredondar2, somarValores } from "./dinheiro";
 import { agoraIso, prazoLembretePadrao } from "./datas";
@@ -145,6 +146,7 @@ export function normalizarProduto(row: Record<string, unknown>, loja: string): P
     nome: str(r.nome, "Produto"),
     preco: arredondar2(num(r.preco)),
     unidade: r.unidade == null || r.unidade === "" ? null : str(r.unidade),
+    codigos_barras: normalizarListaCodigos(r.codigos_barras ?? r.codigosBarras ?? r.codigo_barras),
     ordem: Math.trunc(num(r.ordem, 0)),
     criado_em: criado,
     atualizado_em: iso(r.atualizado_em ?? r.atualizadoEm, criado),

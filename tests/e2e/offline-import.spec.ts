@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { passarDaPorta } from "./helpers";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -8,6 +9,7 @@ test("importa o backup e funciona offline no IndexedDB", async ({ page, context 
   test.skip(!existsSync(OFICIAL), "arquivo de importação privada ausente");
   test.setTimeout(180_000);
   await page.goto("./");
+  await passarDaPorta(page);
   await expect(page.locator(".header h1")).toHaveText("Controle de Vendas");
   await page.getByTestId("import-file").setInputFiles(OFICIAL);
 

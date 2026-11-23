@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { passarDaPorta } from "./helpers";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -81,6 +82,10 @@ test("captura telas públicas com nome genérico e uma captura privada da marca"
   mkdirSync(PRIVADO, { recursive: true });
 
   await page.goto("./");
+  await expect(page.getByTestId("porta-entrada")).toBeVisible();
+  await expect(page.locator(".header .sub").first()).toHaveText("Minha loja");
+  await page.screenshot({ path: `${PUBLICO}/00-entrada.png`, fullPage: false });
+  await passarDaPorta(page);
   await page.getByRole("button", { name: "Começar do zero" }).click();
   await expect(page.getByTestId("calc-valor")).toBeVisible({ timeout: 30_000 });
   await semear(page, "Minha loja");
@@ -94,7 +99,7 @@ test("captura telas públicas com nome genérico e uma captura privada da marca"
   await page.screenshot({ path: `${PUBLICO}/02-vendas.png`, fullPage: false });
 
   await page.getByRole("link", { name: "Mais" }).click();
-  await page.getByRole("link", { name: "Equipe" }).click();
+  await page.locator('a[href$="/equipe"]').click();
   await expect(page.getByTestId("lista-equipe")).toBeVisible();
   await expect(page.getByText("Online agora").first()).toBeVisible();
   await page.screenshot({ path: `${PUBLICO}/03-equipe.png`, fullPage: false });
