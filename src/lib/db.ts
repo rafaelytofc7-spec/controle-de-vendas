@@ -1,4 +1,5 @@
 import { deleteDB, openDB, type IDBPDatabase } from "idb";
+import { PREFS_NOTIFICACAO_PADRAO } from "./types";
 import type {
   Atividade,
   Cobranca,
@@ -144,10 +145,19 @@ export async function listarReabastecimentos(): Promise<Reabastecimento[]> {
     .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
 }
 
+export function completarConfig(cfg: ConfiguracaoLoja): ConfiguracaoLoja {
+  return {
+    ...cfg,
+    hora_lembrete_padrao: cfg.hora_lembrete_padrao || "12:00",
+    notificacoes_padrao: { ...PREFS_NOTIFICACAO_PADRAO, ...(cfg.notificacoes_padrao ?? {}) },
+  };
+}
+
 export async function obterConfig(): Promise<ConfiguracaoLoja | undefined> {
   const d = await db();
   const all = await d.getAll("configuracao");
-  return all[0];
+  const cfg = all[0];
+  return cfg ? completarConfig(cfg) : undefined;
 }
 
 export async function salvarConfig(cfg: ConfiguracaoLoja, sync = true): Promise<void> {
@@ -281,15 +291,17 @@ export async function exportarDados(): Promise<DadosNormalizados> {
   const loja = ((await getMeta("loja")) as string) || (await obterConfig())?.loja || "loja";
   return {
     loja,
-    configuracao: (await obterConfig()) ?? {
+    configuracao: completarConfig((await obterConfig()) ?? {
       loja,
       nome_loja: "Minha loja",
       telefone: "",
       mensagem_cardapio: "",
       taxa_entrega: 0,
       observacoes: "",
+      hora_lembrete_padrao: "12:00",
+      notificacoes_padrao: PREFS_NOTIFICACAO_PADRAO,
       atualizado_em: agoraIso(),
-    },
+    }),
     vendas: await listarVendas(),
     produtos: await listarProdutos(),
     entregas: await listarEntregas(),
@@ -302,7 +314,7 @@ export async function exportarDados(): Promise<DadosNormalizados> {
 
 export async function listarMembros(): Promise<MembroLoja[]> {
   const d = await db();
-  return (await d.getAll("membros")).sort((a, b) => a.email.localeCompare(b.email, "pt-BR"));
+  return (await d.getAll("membros")).sort((a, b) => (a.nome || a.email || a.uid).localeCompare(b.nome || b.email || b.uid, "pt-BR"));
 }
 
 export async function upsertMembro(m: MembroLoja): Promise<void> {

@@ -14,9 +14,21 @@ export interface Autoria {
   atualizadoPorEmail?: string;
 }
 
+export type PapelMembro = "lider" | "membro";
+
+export interface EstadoEquipe {
+  ehDono: boolean;
+  ehLider: boolean;
+  bloqueado: boolean;
+  liderUid: string;
+  meuNome: string;
+}
+
 export interface MembroLoja {
   uid: string;
-  email: string;
+  nome: string;
+  papel: PapelMembro;
+  email?: string;
   bloqueado: boolean;
   ultimoAcesso: string | null;
   criado_em: string;
@@ -74,21 +86,64 @@ export interface Entrega extends Autoria {
   excluido?: boolean;
 }
 
+export type StatusEncomenda = "pendente" | "entregue" | "cancelada";
+export type TipoEncomenda = "retirada" | "entrega";
+export type FormaPagamentoEncomenda = "dinheiro" | "pix" | "debito" | "credito" | "fiado";
+
+export interface EnderecoEncomenda {
+  rua: string;
+  numero: string;
+  bairro: string;
+  referencia: string;
+}
+
 export interface Encomenda extends Autoria {
   id: string;
   loja: string;
   cliente: string;
   produto: string;
   pago: boolean;
+  forma_pagamento: FormaPagamentoEncomenda | null;
+  valor_pago: number | null;
+  pago_em: string | null;
+  pago_por: string | null;
+  pago_por_nome: string | null;
   endereco: string | null;
+  endereco_detalhe: EnderecoEncomenda | null;
   telefone: string | null;
   para_entrega: boolean;
+  tipo: TipoEncomenda;
+  data_entrega: string | null;
+  prazo_lembrete: string | null;
+  status: StatusEncomenda;
+  entregue_por: string | null;
+  entregue_por_nome: string | null;
   valor: number;
   criado_em: string;
   concluido_em: string | null;
   atualizado_em: string;
   excluido?: boolean;
 }
+
+export interface PrefsNotificacao {
+  som: boolean;
+  encomendaNova: boolean;
+  encomendaAtrasada: boolean;
+  novoMembro: boolean;
+  alteracaoOutro: boolean;
+  erroSync: boolean;
+  lembreteBackup: boolean;
+}
+
+export const PREFS_NOTIFICACAO_PADRAO: PrefsNotificacao = {
+  som: true,
+  encomendaNova: true,
+  encomendaAtrasada: true,
+  novoMembro: true,
+  alteracaoOutro: true,
+  erroSync: true,
+  lembreteBackup: true,
+};
 
 export interface Cobranca extends Autoria {
   id: string;
@@ -130,6 +185,8 @@ export interface ConfiguracaoLoja {
   mensagem_cardapio: string;
   taxa_entrega: number;
   observacoes: string;
+  hora_lembrete_padrao: string;
+  notificacoes_padrao: PrefsNotificacao;
   atualizado_em: string;
 }
 

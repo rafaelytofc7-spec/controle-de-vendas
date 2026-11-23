@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.5.0";
 export const VERSION_URL = "https://rafaelytofc7-spec.github.io/controle-de-vendas/version.json";
 export const APK_RELEASE_URL = "https://github.com/rafaelytofc7-spec/controle-de-vendas/releases/latest";
 

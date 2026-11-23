@@ -1,21 +1,22 @@
 import { useMemo, useState } from "react";
 import { ListaVirtual } from "../components/ListaVirtual";
 import { useStore } from "../store";
-import { bloquearMembro, convidarMembro, removerMembro } from "../lib/sync";
+import { bloquearMembro, removerMembro } from "../lib/sync";
+import { alterarNomeMembro, alterarPin, transferirLideranca } from "../lib/acesso";
+import { LOJA_NUVEM_ID } from "../lib/firebasePadrao";
 import { formatarDataHora } from "../lib/datas";
 import { formatarReais } from "../lib/dinheiro";
 import { rotuloAutor } from "../lib/autoria";
 import { AUTOR_IMPORTADO } from "../lib/types";
 
-type Aba = "equipe" | "atividades" | "faturamento" | "loja";
+type Aba = "equipe" | "acesso" | "atividades" | "faturamento" | "loja";
 
 export function Administracao() {
   const {
     ehDono, usuario, loja, online, membros, atividades, vendas, equipe,
-    config, atualizarConfig, recarregar,
+    config, atualizarConfig, recarregar, codigoRecuperacao,
   } = useStore();
   const [aba, setAba] = useState<Aba>("equipe");
-  const [email, setEmail] = useState("");
   const [aviso, setAviso] = useState("");
   const [busy, setBusy] = useState(false);
   const [nome, setNome] = useState(config.nome_loja);
@@ -24,10 +25,12 @@ export function Administracao() {
   const [taxa, setTaxa] = useState(String(config.taxa_entrega).replace(".", ","));
   const [obs, setObs] = useState(config.observacoes);
   const [codigo, setCodigo] = useState(loja);
-
-  const convites = (equipe?.membrosEmails ?? []).filter(
-    (e) => e && !membros.some((m) => m.email === e),
-  );
+  const [pinNovo, setPinNovo] = useState("");
+  const [pinConfirma, setPinConfirma] = useState("");
+  const [novoCodigo, setNovoCodigo] = useState<string>();
+  const [alvoLider, setAlvoLider] = useState("");
+  const [nomeEdit, setNomeEdit] = useState<Record<string, string>>({});
+  const [horaLembrete, setHoraLembrete] = useState(config.hora_lembrete_padrao || "12:00");
 
   const porPessoa = useMemo(() => {
     const map = new Map<string, { rotulo: string; quantidade: number; total: number }>();
@@ -45,41 +48,41 @@ export function Administracao() {
     return (
       <div className="card">
         <h3>Administração</h3>
-        <p className="muted">Só a pessoa dona da loja vê este painel. Entre com a conta dona e sincronize.</p>
+        <p className="muted">Só o líder da loja vê este painel. Entre com o PIN no aparelho do líder e sincronize.</p>
       </div>
     );
-  }
-
-  async function convidar() {
-    setBusy(true); setAviso("");
-    try {
-      await convidarMembro(loja, email);
-      setEmail("");
-      setAviso("Convite registrado. Peça à pessoa para entrar com esse e-mail e a mesma configuração do Firebase.");
-      await recarregar();
-    } catch (e) {
-      setAviso(e instanceof Error ? e.message : "Não foi possível convidar.");
-    } finally { setBusy(false); }
   }
 
   async function bloquear(uid: string, valor: boolean) {
     setBusy(true); setAviso("");
     try {
-      await bloquearMembro(loja, uid, valor);
+      await bloquearMembro(LOJA_NUVEM_ID, uid, valor);
       await recarregar();
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Falha ao atualizar o membro.");
     } finally { setBusy(false); }
   }
 
-  async function remover(uid: string, mail: string) {
-    if (!confirm(`Remover ${mail || uid} da loja?`)) return;
+  async function remover(uid: string, rotulo: string) {
+    if (!confirm(`Remover ${rotulo} da loja?`)) return;
     setBusy(true); setAviso("");
     try {
-      await removerMembro(loja, uid, mail);
+      await removerMembro(LOJA_NUVEM_ID, uid);
       await recarregar();
     } catch (e) {
       setAviso(e instanceof Error ? e.message : "Falha ao remover.");
+    } finally { setBusy(false); }
+  }
+
+  async function editarNome(uid: string) {
+    const n = (nomeEdit[uid] ?? membros.find((m) => m.uid === uid)?.nome ?? "").trim();
+    setBusy(true); setAviso("");
+    try {
+      await alterarNomeMembro(uid, n);
+      setAviso("Nome atualizado.");
+      await recarregar();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : "Não foi possível alterar o nome.");
     } finally { setBusy(false); }
   }
 
@@ -87,59 +90,115 @@ export function Administracao() {
     await atualizarConfig({
       nome_loja: nome, telefone: tel, mensagem_cardapio: msg,
       taxa_entrega: Number(taxa.replace(",", ".")) || 0, observacoes: obs, loja: codigo.trim() || loja,
+      hora_lembrete_padrao: horaLembrete || "12:00",
     });
     setAviso("Configurações da loja salvas. Sincronize para enviar à nuvem.");
   }
+
+  async function trocarPin() {
+    if (pinNovo !== pinConfirma) { setAviso("Os dois campos do novo PIN precisam ser iguais."); return; }
+    setBusy(true); setAviso("");
+    try {
+      const codigoNovo = await alterarPin(pinNovo, codigoRecuperacao);
+      setPinNovo(""); setPinConfirma("");
+      setNovoCodigo(codigoNovo);
+      setAviso(`PIN atualizado. O código de recuperação também mudou: ${codigoNovo}. Anote-o fora do telefone.`);
+      await recarregar();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : "Não foi possível alterar o PIN.");
+    } finally { setBusy(false); }
+  }
+
+  async function passarLideranca() {
+    if (!alvoLider) return;
+    const alvo = membros.find((m) => m.uid === alvoLider);
+    if (!confirm(`Passar a liderança para ${alvo?.nome || alvoLider}? Você deixa de ser o líder neste aparelho.`)) return;
+    setBusy(true); setAviso("");
+    try {
+      await transferirLideranca(alvoLider);
+      setAviso("Liderança transferida. Peça à pessoa para sincronizar neste e no outro aparelho.");
+      await recarregar();
+    } catch (e) {
+      setAviso(e instanceof Error ? e.message : "Não foi possível transferir a liderança.");
+    } finally { setBusy(false); }
+  }
+
+  const codigoMostrado = novoCodigo || codigoRecuperacao;
+  const meuUid = usuario?.uid;
 
   return (
     <div>
       <div className="tabs tabs-admin">
         <button className={aba === "equipe" ? "on" : ""} onClick={() => setAba("equipe")}>Equipe</button>
+        <button className={aba === "acesso" ? "on" : ""} onClick={() => setAba("acesso")}>Acesso</button>
         <button className={aba === "atividades" ? "on" : ""} onClick={() => setAba("atividades")}>Atividades</button>
         <button className={aba === "faturamento" ? "on" : ""} onClick={() => setAba("faturamento")}>Por pessoa</button>
         <button className={aba === "loja" ? "on" : ""} onClick={() => setAba("loja")}>Loja</button>
       </div>
       {aviso && <div className="banner">{aviso}</div>}
-      {!online && <p className="muted small">Conecte-se à internet para convidar, bloquear ou remover alguém.</p>}
+      {!online && <p className="muted small">Conecte-se à internet para gerenciar a equipe, o PIN ou a liderança.</p>}
 
       {aba === "equipe" && (
         <div className="card">
           <h3>Pessoas da loja</h3>
-          <p className="muted small">Quem você adicionar usa o aplicativo normalmente. Só você gerencia a equipe e as configurações.</p>
-          <label className="field">E-mail da pessoa
-            <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" />
-          </label>
-          <button className="btn btn-primary btn-block" disabled={busy || !online || !usuario} onClick={() => void convidar()}>Adicionar por e-mail</button>
+          <p className="muted small">Quem entra com o PIN da loja aparece aqui, com o nome que escolheu. Você pode bloquear ou remover um aparelho. Não dá para convidar por e-mail: o acesso é o PIN compartilhado.</p>
           <ul className="lista">
             {membros.map((m) => (
               <li key={m.uid} className="lista-item">
                 <div className="grow">
-                  <strong>{m.email || m.uid.slice(0, 8)}</strong>
+                  <strong>{m.nome || m.uid.slice(0, 8)}</strong>
                   <div className="muted small">
-                    {m.uid === equipe?.ownerUid ? "Dona da loja · " : ""}
-                    {m.bloqueado ? "Bloqueada · " : ""}
+                    {m.uid === equipe?.liderUid || m.papel === "lider" ? "Líder · " : ""}
+                    {m.bloqueado ? "Bloqueado · " : ""}
                     Último acesso: {m.ultimoAcesso ? formatarDataHora(m.ultimoAcesso) : "ainda não entrou"}
                   </div>
+                  <div className="row wrap" style={{ marginTop: 6 }}>
+                    <input className="input grow" value={nomeEdit[m.uid] ?? m.nome ?? ""} onChange={(e) => setNomeEdit((s) => ({ ...s, [m.uid]: e.target.value }))} aria-label={`Nome de ${m.nome || "membro"}`} />
+                    <button className="btn btn-sm" disabled={busy || !online} onClick={() => void editarNome(m.uid)}>Salvar nome</button>
+                  </div>
                 </div>
-                {m.uid !== equipe?.ownerUid && (
+                {m.uid !== meuUid && m.uid !== equipe?.liderUid && (
                   <div className="row wrap">
                     <button className="btn" disabled={busy || !online} onClick={() => void bloquear(m.uid, !m.bloqueado)}>
                       {m.bloqueado ? "Desbloquear" : "Bloquear"}
                     </button>
-                    <button className="btn" disabled={busy || !online} onClick={() => void remover(m.uid, m.email)}>Remover</button>
+                    <button className="btn" disabled={busy || !online} onClick={() => void remover(m.uid, m.nome || m.uid)}>Remover</button>
                   </div>
                 )}
               </li>
             ))}
           </ul>
-          {convites.length > 0 && (
-            <>
-              <h4>Convites pendentes</h4>
-              <ul className="lista">
-                {convites.map((e) => <li key={e} className="lista-item"><span>{e}</span><span className="muted small">Aguardando entrar</span></li>)}
-              </ul>
-            </>
+        </div>
+      )}
+
+      {aba === "acesso" && (
+        <div className="card col">
+          <h3>PIN e recuperação</h3>
+          <p className="muted small">O PIN não fica gravado no aplicativo publicado. Só o líder altera. Ao trocar o PIN, um código de recuperação novo é gerado.</p>
+          {codigoMostrado ? (
+            <p>Código de recuperação: <strong className="mono">{codigoMostrado}</strong></p>
+          ) : (
+            <p className="muted">Nenhum código de recuperação neste aparelho. Se você ainda é o líder original, o código foi mostrado na primeira entrada. Se perdeu, altere o PIN para gerar um novo.</p>
           )}
+          <label className="field">Novo PIN
+            <input className="input" type="password" inputMode="numeric" autoComplete="new-password" value={pinNovo} onChange={(e) => setPinNovo(e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="4 a 8 números" />
+          </label>
+          <label className="field">Confirme o novo PIN
+            <input className="input" type="password" inputMode="numeric" autoComplete="new-password" value={pinConfirma} onChange={(e) => setPinConfirma(e.target.value.replace(/\D/g, "").slice(0, 8))} />
+          </label>
+          <button className="btn btn-primary" disabled={busy || !online || !pinNovo} onClick={() => void trocarPin()}>Alterar PIN</button>
+
+          <h3 style={{ marginTop: 24 }}>Passar a liderança</h3>
+          <p className="muted small">Escolha outra pessoa já na equipe. Depois da transferência, só ela gerencia membros e o PIN.</p>
+          <label className="field">Novo líder
+            <select className="input" value={alvoLider} onChange={(e) => setAlvoLider(e.target.value)}>
+              <option value="">Selecione</option>
+              {membros.filter((m) => m.uid !== meuUid && !m.bloqueado).map((m) => (
+                <option key={m.uid} value={m.uid}>{m.nome || m.uid.slice(0, 8)}</option>
+              ))}
+            </select>
+          </label>
+          <button className="btn" disabled={busy || !online || !alvoLider} onClick={() => void passarLideranca()}>Transferir liderança</button>
         </div>
       )}
 
@@ -190,10 +249,14 @@ export function Administracao() {
           <h3>Configurações da loja</h3>
           <label className="field">Nome da loja<input className="input" value={nome} onChange={(e) => setNome(e.target.value)} /></label>
           <label className="field">Código da loja<input className="input" value={codigo} onChange={(e) => setCodigo(e.target.value)} /></label>
+          <p className="muted small">O código acima é só local. Na nuvem, todos os aparelhos que entram com o PIN compartilham o mesmo banco.</p>
           <label className="field">Telefone<input className="input" value={tel} onChange={(e) => setTel(e.target.value)} /></label>
           <label className="field">Mensagem do cardápio<textarea className="input" value={msg} onChange={(e) => setMsg(e.target.value)} /></label>
           <label className="field">Taxa de entrega<input className="input" value={taxa} onChange={(e) => setTaxa(e.target.value)} inputMode="decimal" /></label>
           <label className="field">Observações<textarea className="input" value={obs} onChange={(e) => setObs(e.target.value)} /></label>
+          <label className="field">Horário padrão do lembrete das encomendas
+            <input className="input" type="time" value={horaLembrete} onChange={(e) => setHoraLembrete(e.target.value)} />
+          </label>
           <button className="btn btn-primary" onClick={() => void salvarLoja()}>Salvar</button>
         </div>
       )}

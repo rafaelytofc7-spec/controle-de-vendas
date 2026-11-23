@@ -1,6 +1,7 @@
+import { enderecoDeTexto } from "./encomendas";
 import { arredondar2, somarValores } from "./dinheiro";
-import { agoraIso } from "./datas";
-import type {
+import { agoraIso, prazoLembretePadrao } from "./datas";
+import type { EnderecoEncomenda, FormaPagamentoEncomenda, StatusEncomenda, TipoEncomenda, 
   Autoria,
   BackupArquivo,
   Cobranca,
@@ -16,7 +17,7 @@ import type {
   Venda,
   VerificacaoImportacao,
 } from "./types";
-import { AUTOR_IMPORTADO } from "./types";
+import { AUTOR_IMPORTADO, PREFS_NOTIFICACAO_PADRAO } from "./types";
 import { calcularReabastecimento } from "./reabastecimento";
 
 const TOKEN_KEYS = /^(token|secret|senha|password|access_token|api_key|apikey|refresh_token|client_secret|private_key)$/i;
@@ -178,18 +179,59 @@ export function normalizarEntrega(row: Record<string, unknown>, loja: string): E
 export function normalizarEncomenda(row: Record<string, unknown>, loja: string): Encomenda {
   const r = limparSegredos(row);
   const criado = iso(r.criado_em ?? r.criadoEm);
+  const concluido = isoOrNull(r.concluido_em ?? r.concluidoEm);
+  const paraEntrega = bool(r.para_entrega ?? r.paraEntrega);
+  const tipoRaw = str(r.tipo, paraEntrega ? "entrega" : "retirada");
+  const tipo: TipoEncomenda = tipoRaw === "entrega" || tipoRaw === "retirada" ? tipoRaw : (paraEntrega ? "entrega" : "retirada");
+  const statusRaw = str(r.status, concluido ? "entregue" : "pendente");
+  const status: StatusEncomenda = ["pendente", "entregue", "cancelada"].includes(statusRaw)
+    ? (statusRaw as StatusEncomenda)
+    : (concluido ? "entregue" : "pendente");
+  const formaRaw = str(r.forma_pagamento ?? r.formaPagamento, "");
+  const forma_pagamento: FormaPagamentoEncomenda | null = ["dinheiro", "pix", "debito", "credito", "fiado"].includes(formaRaw)
+    ? (formaRaw as FormaPagamentoEncomenda)
+    : null;
+  let detalhe: EnderecoEncomenda | null = null;
+  const det = r.endereco_detalhe ?? r.enderecoDetalhe;
+  if (det && typeof det === "object") {
+    const d = det as Record<string, unknown>;
+    detalhe = {
+      rua: str(d.rua),
+      numero: str(d.numero),
+      bairro: str(d.bairro),
+      referencia: str(d.referencia),
+    };
+    if (!detalhe.rua && !detalhe.numero && !detalhe.bairro && !detalhe.referencia) detalhe = null;
+  }
+  const enderecoTexto = r.endereco == null || r.endereco === "" ? null : str(r.endereco);
+  if (!detalhe) detalhe = enderecoDeTexto(enderecoTexto);
+  const dataEntrega = isoOrNull(r.data_entrega ?? r.dataEntrega);
+  const prazo = isoOrNull(r.prazo_lembrete ?? r.prazoLembrete) ?? (dataEntrega ? prazoLembretePadrao(dataEntrega) : null);
+  const valorPagoRaw = r.valor_pago ?? r.valorPago;
   return {
     id: str(r.id, gerarId()),
     loja: str(r.loja, loja),
     cliente: str(r.cliente),
     produto: str(r.produto),
     pago: bool(r.pago),
-    endereco: r.endereco == null || r.endereco === "" ? null : str(r.endereco),
+    forma_pagamento,
+    valor_pago: valorPagoRaw == null || valorPagoRaw === "" ? null : arredondar2(num(valorPagoRaw)),
+    pago_em: isoOrNull(r.pago_em ?? r.pagoEm),
+    pago_por: r.pago_por || r.pagoPor ? str(r.pago_por ?? r.pagoPor) : null,
+    pago_por_nome: r.pago_por_nome || r.pagoPorNome ? str(r.pago_por_nome ?? r.pagoPorNome) : null,
+    endereco: enderecoTexto ?? (detalhe ? [detalhe.rua, detalhe.numero, detalhe.bairro].filter(Boolean).join(", ") : null),
+    endereco_detalhe: detalhe,
     telefone: r.telefone == null || r.telefone === "" ? null : str(r.telefone),
-    para_entrega: bool(r.para_entrega ?? r.paraEntrega),
+    para_entrega: tipo === "entrega",
+    tipo,
+    data_entrega: dataEntrega,
+    prazo_lembrete: prazo,
+    status,
+    entregue_por: r.entregue_por || r.entreguePor ? str(r.entregue_por ?? r.entreguePor) : null,
+    entregue_por_nome: r.entregue_por_nome || r.entreguePorNome ? str(r.entregue_por_nome ?? r.entreguePorNome) : null,
     valor: arredondar2(num(r.valor)),
     criado_em: criado,
-    concluido_em: isoOrNull(r.concluido_em ?? r.concluidoEm),
+    concluido_em: concluido,
     atualizado_em: iso(r.atualizado_em ?? r.atualizadoEm, criado),
     ...autoriaImportada(r),
   };
@@ -261,6 +303,8 @@ export function normalizarConfig(cfg: Record<string, unknown> | undefined, loja:
     mensagem_cardapio: str(c.mensagem_cardapio ?? c.mensagemCardapio),
     taxa_entrega: arredondar2(num(c.taxa_entrega ?? c.taxaEntrega)),
     observacoes: str(c.observacoes),
+    hora_lembrete_padrao: str(c.hora_lembrete_padrao ?? c.horaLembretePadrao, "12:00") || "12:00",
+    notificacoes_padrao: { ...PREFS_NOTIFICACAO_PADRAO, ...((typeof (c.notificacoes_padrao ?? c.notificacoesPadrao) === "object" && (c.notificacoes_padrao ?? c.notificacoesPadrao)) ? (c.notificacoes_padrao ?? c.notificacoesPadrao) as Partial<typeof PREFS_NOTIFICACAO_PADRAO> : {}) },
     atualizado_em: agoraIso(),
   };
 }
@@ -304,6 +348,14 @@ export const ESPERADO_BACKUP_ATUALIZADO = {
   encomendas: 5,
   cobrancas: 3,
   total_vendas: 164518.86,
+};
+
+export const ESPERADO_BACKUP_2026_11_22 = {
+  vendas: 6974,
+  produtos: 57,
+  encomendas: 5,
+  cobrancas: 3,
+  total_vendas: 165560.88,
 };
 
 export function verificarDados(

@@ -42,7 +42,7 @@ export function PrimeiraExecucao() {
       <main className="page">
         <div className="card">
           <h2>Começar com os seus dados</h2>
-          <p className="muted">O aplicativo funciona neste aparelho, mesmo sem internet. Importe o arquivo de backup para trazer as vendas já registradas, ou comece do zero.</p>
+          <p className="muted">O aplicativo funciona neste aparelho, mesmo sem internet. Importe o arquivo de atualização mais recente (caixa-importacao-2026-11-22-2049.json) para trazer as vendas. Se você já importou um arquivo anterior, este mescla pelo id e não duplica. Ou comece do zero.</p>
           <label className="field" style={{ margin: "16px 0" }}>
             Arquivo de backup (.json)
             <input data-testid="import-file" className="input" type="file" accept="application/json,.json" disabled={busy} onChange={(e) => void onFile(e.target.files?.[0] ?? null)} />

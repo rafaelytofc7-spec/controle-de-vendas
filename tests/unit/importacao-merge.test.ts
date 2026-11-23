@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it, beforeEach } from "vitest";
 import { importarDados, listarVendas, resetarBanco, bancoTemDados } from "../../src/lib/db";
-import { normalizarBackup, parseBackup, ESPERADO_BACKUP_INICIAL, ESPERADO_BACKUP_ATUALIZADO } from "../../src/lib/importacao";
+import { normalizarBackup, parseBackup, ESPERADO_BACKUP_INICIAL, ESPERADO_BACKUP_ATUALIZADO, ESPERADO_BACKUP_2026_11_22 } from "../../src/lib/importacao";
 import { somarValores } from "../../src/lib/dinheiro";
 
 const ANTIGO = "/workspace/controle-vendas/importacao/caixa-importacao-2026-11-21.json";
@@ -43,5 +43,25 @@ describe("importação mescla pelo id sem duplicar", () => {
     vendas = await listarVendas();
     expect(vendas).toHaveLength(ESPERADO_BACKUP_ATUALIZADO.vendas);
     expect(somarValores(vendas.map((v) => v.valor))).toBe(ESPERADO_BACKUP_ATUALIZADO.total_vendas);
+  }, 60_000);
+});
+
+const ATUAL_22 = "/workspace/controle-vendas/importacao/caixa-importacao-2026-11-22-2049.json";
+
+describe("importação da atualização de 22/11/2026", () => {
+  beforeEach(async () => {
+    await resetarBanco();
+  });
+
+  it.skipIf(!existsSync(ATUAL) || !existsSync(ATUAL_22))("mescla o arquivo de 22/11 por cima do de 21/11 sem duplicar", async () => {
+    const meio = carregar(ATUAL);
+    await importarDados(meio, true);
+    const novo = carregar(ATUAL_22);
+    const r = await importarDados(novo, false);
+    expect(r.adicionados.vendas).toBe(57);
+    const vendas = await listarVendas();
+    expect(vendas).toHaveLength(ESPERADO_BACKUP_2026_11_22.vendas);
+    expect(new Set(vendas.map((v) => v.id)).size).toBe(ESPERADO_BACKUP_2026_11_22.vendas);
+    expect(somarValores(vendas.map((v) => v.valor))).toBe(ESPERADO_BACKUP_2026_11_22.total_vendas);
   }, 60_000);
 });

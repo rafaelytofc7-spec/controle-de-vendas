@@ -33,18 +33,21 @@ O histórico de vendas **não** entra neste repositório (são dados da loja). N
 
 ## Ligar a nuvem
 
-A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Abra **Mais → Ajustes → Nuvem**, crie uma conta com e-mail e senha e entre. A primeira conta vira a dona da loja. As outras pessoas são adicionadas por e-mail no painel **Mais → Administração**. Elas usam o aplicativo normalmente. Só a dona gerencia a equipe, vê o registro de atividades, o faturamento por pessoa e altera as configurações da loja. Não há cargos.
+A nuvem já vem configurada (projeto `controle-de-vendas-bddb9`). Abra **Mais → Ajustes → Nuvem**, informe o seu nome e o PIN da loja. O primeiro aparelho que entra vira o líder e define o PIN. Os outros entram com o mesmo PIN e um nome de exibição; todos usam o mesmo banco na nuvem. Só o líder gerencia a equipe, o PIN, o registro de atividades, o faturamento por pessoa e as configurações da loja. Não há cargos nem convite por e-mail.
+
+Antes de instalar a 1.5.0, publique as regras novas e ligue o acesso anônimo no Console do Firebase (passo a passo em [GUIA-FIREBASE.md](GUIA-FIREBASE.md)).
 
 O detalhe está no aplicativo, em **Mais → Ajustes → Guia**, e no arquivo [GUIA-FIREBASE.md](GUIA-FIREBASE.md). Se quiser outro projeto Firebase, a tela Nuvem ainda aceita colar uma configuração alternativa.
 
 ## Aplicativo Android
 
-O APK de cada versão fica em [Releases](https://github.com/rafaelytofc7-spec/controle-de-vendas/releases). No Firebase, inclua `localhost` nos domínios autorizados. No Android, use e-mail e senha (o login com o Google em geral não abre a janela de conta no WebView). Importe o backup pelo seletor de arquivos do aparelho; o histórico da loja **não** vem embutido no APK.
+O APK de cada versão fica em [Releases](https://github.com/rafaelytofc7-spec/controle-de-vendas/releases). No Firebase, inclua `localhost` nos domínios autorizados e ligue o acesso anônimo. No Android, entre com o nome e o PIN. Importe o backup pelo seletor de arquivos do aparelho; o histórico da loja **não** vem embutido no APK.
 
 ## Testes
 
 ```bash
-npm test          # matemática, promoções, importação
+npm test          # matemática, promoções, importação, PIN
+npm run test:rules  # regras do Firestore (emulador)
 npm run build
 npm run test:e2e  # precisa do backup privado no caminho local de desenvolvimento
 ```

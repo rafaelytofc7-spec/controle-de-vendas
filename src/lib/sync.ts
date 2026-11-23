@@ -40,7 +40,8 @@ import {
   upsertVenda,
   salvarConfig,
 } from "./db";
-import type { Atividade, Cobranca, Encomenda, Entrega, MembroLoja, Produto, Reabastecimento, Venda } from "./types";
+import type { Atividade, Cobranca, Encomenda, Entrega, EstadoEquipe, MembroLoja, Produto, Reabastecimento, Venda } from "./types";
+export type { EstadoEquipe } from "./types";
 import { agoraIso } from "./datas";
 
 const LOTE = 400;
@@ -51,93 +52,30 @@ export interface ProgressoSync {
   total: number;
 }
 
-export interface EstadoEquipe {
-  ehDono: boolean;
-  bloqueado: boolean;
-  ownerUid: string;
-  ownerEmail: string;
-  membrosEmails: string[];
-}
-
-function emailNorm(email?: string | null): string {
-  return (email ?? "").trim().toLowerCase();
-}
-
 export async function garantirMembro(loja: string, user: User): Promise<EstadoEquipe> {
   const { db } = getFirebase();
   const lojaRef = doc(db, "lojas", loja);
   const snap = await getDoc(lojaRef);
-  const agora = agoraIso();
-  const email = emailNorm(user.email);
-
   if (!snap.exists()) {
-    await setDoc(lojaRef, {
-      ownerUid: user.uid,
-      ownerEmail: email,
-      membrosEmails: email ? [email] : [],
-      criado_em: agora,
-    });
-    const membro: MembroLoja = {
-      uid: user.uid,
-      email,
-      bloqueado: false,
-      ultimoAcesso: agora,
-      criado_em: agora,
-    };
-    await setDoc(doc(db, "lojas", loja, "membros", user.uid), membro);
-    await upsertMembro(membro);
-    const estado: EstadoEquipe = {
-      ehDono: true,
-      bloqueado: false,
-      ownerUid: user.uid,
-      ownerEmail: email,
-      membrosEmails: email ? [email] : [],
-    };
-    await cacheEstado(estado);
-    return estado;
+    throw new Error("A loja ainda não existe na nuvem. Entre com o seu nome e o PIN em Ajustes → Nuvem.");
   }
-
-  const data = snap.data() as { ownerUid?: string; ownerEmail?: string; membrosEmails?: string[] };
-  const ownerUid = data.ownerUid ?? "";
-  const ownerEmail = emailNorm(data.ownerEmail);
-  const membrosEmails = Array.isArray(data.membrosEmails) ? data.membrosEmails.map(emailNorm) : [];
-  const ehDono = ownerUid === user.uid;
-  const convocado = Boolean(email && membrosEmails.includes(email));
+  const liderUid = (snap.data() as { liderUid?: string }).liderUid ?? "";
   const membroRef = doc(db, "lojas", loja, "membros", user.uid);
   const membroSnap = await getDoc(membroRef);
-
-  if (membroSnap.exists() && membroSnap.data().bloqueado === true) {
-    const estado: EstadoEquipe = { ehDono, bloqueado: true, ownerUid, ownerEmail, membrosEmails };
-    await cacheEstado(estado);
-    throw new Error("Sua conta foi bloqueada nesta loja. Fale com a pessoa dona do aplicativo.");
-  }
-
   if (!membroSnap.exists()) {
-    if (!ehDono && !convocado) {
-      throw new Error("Sua conta não tem permissão nesta loja. Peça à pessoa dona para adicionar o seu e-mail.");
-    }
-    const membro: MembroLoja = {
-      uid: user.uid,
-      email,
-      bloqueado: false,
-      ultimoAcesso: agora,
-      criado_em: agora,
-    };
-    await setDoc(membroRef, membro);
-    await upsertMembro(membro);
-  } else {
-    await setDoc(membroRef, { ultimoAcesso: agora }, { merge: true });
-    const atual = membroSnap.data() as MembroLoja;
-    await upsertMembro({
-      uid: user.uid,
-      email: emailNorm(atual.email) || email,
-      bloqueado: Boolean(atual.bloqueado),
-      ultimoAcesso: agora,
-      criado_em: atual.criado_em || agora,
-    });
+    throw new Error("Este aparelho ainda não entrou na loja. Abra Ajustes → Nuvem e entre com o PIN.");
   }
-
-  const estado: EstadoEquipe = { ehDono, bloqueado: false, ownerUid, ownerEmail, membrosEmails };
+  const atual = membroSnap.data() as MembroLoja;
+  if (atual.bloqueado) {
+    const estado: EstadoEquipe = { ehDono: false, ehLider: false, bloqueado: true, liderUid, meuNome: atual.nome ?? "" };
+    await cacheEstado(estado);
+    throw new Error("Este aparelho foi bloqueado. Fale com o líder.");
+  }
+  const agora = agoraIso();
+  await setDoc(membroRef, { ultimoAcesso: agora }, { merge: true });
+  await upsertMembro({ ...atual, ultimoAcesso: agora, nome: atual.nome ?? "", papel: atual.papel ?? (liderUid === user.uid ? "lider" : "membro") });
+  const ehLider = liderUid === user.uid;
+  const estado: EstadoEquipe = { ehDono: ehLider, ehLider, bloqueado: false, liderUid, meuNome: atual.nome ?? "" };
   await cacheEstado(estado);
   return estado;
 }
@@ -150,20 +88,6 @@ export async function estadoEquipeLocal(): Promise<EstadoEquipe | undefined> {
   return getMeta<EstadoEquipe>("equipe");
 }
 
-export async function convidarMembro(loja: string, emailBruto: string): Promise<void> {
-  const email = emailNorm(emailBruto);
-  if (!email || !email.includes("@")) throw new Error("Informe um e-mail válido.");
-  const { db } = getFirebase();
-  const lojaRef = doc(db, "lojas", loja);
-  const snap = await getDoc(lojaRef);
-  if (!snap.exists()) throw new Error("A loja ainda não existe na nuvem. Entre e sincronize primeiro.");
-  const data = snap.data() as { membrosEmails?: string[] };
-  const emails = Array.isArray(data.membrosEmails) ? data.membrosEmails.map(emailNorm) : [];
-  if (!emails.includes(email)) emails.push(email);
-  await setDoc(lojaRef, { membrosEmails: emails }, { merge: true });
-  await setMeta("equipe", { ...(await estadoEquipeLocal()), membrosEmails: emails });
-}
-
 export async function bloquearMembro(loja: string, uid: string, bloqueado: boolean): Promise<void> {
   const { db } = getFirebase();
   const ref = doc(db, "lojas", loja, "membros", uid);
@@ -173,24 +97,12 @@ export async function bloquearMembro(loja: string, uid: string, bloqueado: boole
   if (atual) await upsertMembro({ ...atual, bloqueado });
 }
 
-export async function removerMembro(loja: string, uid: string, email?: string): Promise<void> {
+export async function removerMembro(loja: string, uid: string): Promise<void> {
   const { db } = getFirebase();
   await deleteDoc(doc(db, "lojas", loja, "membros", uid));
-  if (email) {
-    const lojaRef = doc(db, "lojas", loja);
-    const snap = await getDoc(lojaRef);
-    if (snap.exists()) {
-      const data = snap.data() as { membrosEmails?: string[] };
-      const emails = (Array.isArray(data.membrosEmails) ? data.membrosEmails : [])
-        .map(emailNorm)
-        .filter((e) => e !== emailNorm(email));
-      await setDoc(lojaRef, { membrosEmails: emails }, { merge: true });
-      const eq = await estadoEquipeLocal();
-      if (eq) await setMeta("equipe", { ...eq, membrosEmails: emails });
-    }
-  }
   await removerMembroLocal(uid);
 }
+
 
 async function escreverLote(itens: Array<{ path: string[]; data: DocumentData }>) {
   const { db } = getFirebase();
@@ -338,7 +250,9 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
     vistos.add(uid);
     await upsertMembro({
       uid,
-      email: emailNorm(r.email),
+      nome: String(r.nome ?? r.email ?? uid),
+      papel: r.papel === "lider" ? "lider" : "membro",
+      email: r.email ? String(r.email) : undefined,
       bloqueado: Boolean(r.bloqueado),
       ultimoAcesso: r.ultimoAcesso ?? null,
       criado_em: r.criado_em || agoraIso(),
@@ -356,7 +270,7 @@ export async function puxarRemoto(loja: string, onProg?: (p: ProgressoSync) => v
         id: String(r.id),
         loja,
         uid: String(r.uid ?? ""),
-        email: emailNorm(r.email),
+        email: String(r.email ?? ""),
         acao: r.acao,
         colecao: String(r.colecao ?? ""),
         registroId: String(r.registroId ?? ""),

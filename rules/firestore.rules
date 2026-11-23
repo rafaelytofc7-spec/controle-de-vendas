@@ -5,30 +5,38 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function emailAtual() {
-      return authed() && request.auth.token.email != null
-        ? request.auth.token.email.lower()
-        : '';
+    function lojaPath(lojaId) {
+      return /databases/$(database)/documents/lojas/$(lojaId);
+    }
+
+    function acessoPath(lojaId) {
+      return /databases/$(database)/documents/lojas/$(lojaId)/privado/acesso;
+    }
+
+    function tentativasPath(lojaId, uid) {
+      return /databases/$(database)/documents/lojas/$(lojaId)/tentativas/$(uid);
+    }
+
+    function ingressoPath(lojaId, uid) {
+      return /databases/$(database)/documents/lojas/$(lojaId)/ingressos/$(uid);
+    }
+
+    function recuperacaoPath(lojaId, uid) {
+      return /databases/$(database)/documents/lojas/$(lojaId)/recuperacao/$(uid);
     }
 
     function lojaDoc(lojaId) {
-      return get(/databases/$(database)/documents/lojas/$(lojaId));
+      return get(lojaPath(lojaId));
     }
 
     function membroDoc(lojaId, uid) {
       return get(/databases/$(database)/documents/lojas/$(lojaId)/membros/$(uid));
     }
 
-    function ehDono(lojaId) {
+    function ehLider(lojaId) {
       return authed()
-        && exists(/databases/$(database)/documents/lojas/$(lojaId))
-        && lojaDoc(lojaId).data.ownerUid == request.auth.uid;
-    }
-
-    function convocado(lojaId) {
-      return exists(/databases/$(database)/documents/lojas/$(lojaId))
-        && lojaDoc(lojaId).data.membrosEmails is list
-        && emailAtual() in lojaDoc(lojaId).data.membrosEmails;
+        && exists(lojaPath(lojaId))
+        && lojaDoc(lojaId).data.liderUid == request.auth.uid;
     }
 
     function registroMembro(lojaId) {
@@ -40,54 +48,118 @@ service cloud.firestore {
     }
 
     function ehMembro(lojaId) {
-      return authed() && !bloqueado(lojaId) && (
-        ehDono(lojaId) || registroMembro(lojaId) || convocado(lojaId)
-      );
+      return authed() && !bloqueado(lojaId) && (ehLider(lojaId) || registroMembro(lojaId));
     }
 
-    function autorCriacaoOk() {
-      return request.resource.data.criadoPor == request.auth.uid
-        || (request.resource.data.criadoPor == 'importado'
-            && request.resource.data.keys().hasAny(['loja'])
-            && ehDono(request.resource.data.loja));
+    function pinValido(valor) {
+      return valor is string && valor.matches('^[0-9]{4,8}$');
     }
 
-    function autorAtualizacaoOk() {
-      return request.resource.data.atualizadoPor == request.auth.uid
-        || (request.resource.data.atualizadoPor == 'importado' && ehDono(request.resource.data.loja));
+    function codigoValido(valor) {
+      return valor is string && valor.matches('^[A-Z0-9]{8}$');
+    }
+
+    function nomeValido(valor) {
+      return valor is string && valor.size() >= 2 && valor.size() <= 40;
+    }
+
+    function esperaTentativa(falhas) {
+      return falhas <= 1
+        ? duration.value(1, 's')
+        : (falhas == 2
+          ? duration.value(2, 's')
+          : (falhas == 3
+            ? duration.value(4, 's')
+            : (falhas == 4
+              ? duration.value(8, 's')
+              : (falhas == 5
+                ? duration.value(16, 's')
+                : duration.value(30, 's')))));
+    }
+
+    function tentativasLiberadas(lojaId) {
+      return exists(tentativasPath(lojaId, request.auth.uid))
+        && get(tentativasPath(lojaId, request.auth.uid)).data.proximaTentativa <= request.time
+        && (
+          !(get(tentativasPath(lojaId, request.auth.uid)).data.keys().hasAny(['bloqueadoAte']))
+          || get(tentativasPath(lojaId, request.auth.uid)).data.bloqueadoAte <= request.time
+        )
+        && (
+          get(tentativasPath(lojaId, request.auth.uid)).data.falhas < 15
+          || (
+            get(tentativasPath(lojaId, request.auth.uid)).data.keys().hasAny(['bloqueadoAte'])
+            && get(tentativasPath(lojaId, request.auth.uid)).data.bloqueadoAte <= request.time
+          )
+        );
     }
 
     match /lojas/{lojaId} {
-      allow create: if authed() && request.resource.data.ownerUid == request.auth.uid;
+      function autorCriacaoOk() {
+        return request.resource.data.criadoPor == request.auth.uid
+          || (request.resource.data.criadoPor == 'importado' && ehLider(lojaId));
+      }
+
+      function autorAtualizacaoOk() {
+        return request.resource.data.atualizadoPor == request.auth.uid
+          || (request.resource.data.atualizadoPor == 'importado' && ehLider(lojaId));
+      }
+
+      allow create: if authed()
+        && request.resource.data.liderUid == request.auth.uid
+        && request.resource.data.keys().hasAll(['liderUid', 'criado_em']);
       allow read: if ehMembro(lojaId);
-      allow update: if ehDono(lojaId);
+      allow update: if ehLider(lojaId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liderUid', 'atualizado_em'])
+        || (
+          authed()
+          && exists(recuperacaoPath(lojaId, request.auth.uid))
+          && exists(acessoPath(lojaId))
+          && pinValido(get(recuperacaoPath(lojaId, request.auth.uid)).data.pin)
+          && get(recuperacaoPath(lojaId, request.auth.uid)).data.pin == get(acessoPath(lojaId)).data.pin
+          && codigoValido(get(recuperacaoPath(lojaId, request.auth.uid)).data.codigo)
+          && get(recuperacaoPath(lojaId, request.auth.uid)).data.codigo == get(acessoPath(lojaId)).data.codigoRecuperacao
+          && request.resource.data.liderUid == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liderUid', 'atualizado_em'])
+        );
       allow delete: if false;
 
       match /membros/{uid} {
-        allow read: if ehMembro(lojaId) || (authed() && request.auth.uid == uid);
-        allow create: if authed() && (
-          ehDono(lojaId)
-          || (request.auth.uid == uid && (ehDono(lojaId) || convocado(lojaId)))
-        );
-        allow delete: if ehDono(lojaId);
-        allow update: if ehDono(lojaId) || (
-          authed()
-          && request.auth.uid == uid
-          && !bloqueado(lojaId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ultimoAcesso'])
-        );
+        allow read: if ehMembro(lojaId);
+        allow create: if authed() && request.auth.uid == uid
+          && nomeValido(request.resource.data.nome)
+          && !request.resource.data.keys().hasAny(['pin', 'codigo', 'codigoRecuperacao'])
+          && request.resource.data.bloqueado == false
+          && (
+            exists(ingressoPath(lojaId, uid))
+            || (
+              request.resource.data.papel == 'lider'
+              && (
+                !exists(lojaPath(lojaId))
+                || lojaDoc(lojaId).data.liderUid == request.auth.uid
+              )
+            )
+          );
+        allow delete: if ehLider(lojaId) && uid != request.auth.uid;
+        allow update: if ehLider(lojaId)
+          || (
+            authed()
+            && request.auth.uid == uid
+            && !bloqueado(lojaId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ultimoAcesso', 'nome'])
+            && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['nome']) || nomeValido(request.resource.data.nome))
+          );
       }
 
       match /configuracao/{docId} {
         allow read: if ehMembro(lojaId);
-        allow write: if ehDono(lojaId);
+        allow write: if ehLider(lojaId);
       }
 
       match /atividades/{docId} {
-        allow read: if ehDono(lojaId);
+        allow read: if ehLider(lojaId);
         allow create: if ehMembro(lojaId)
           && request.resource.data.uid == request.auth.uid;
-        allow update, delete: if ehDono(lojaId);
+        allow update, delete: if ehLider(lojaId);
       }
 
       match /vendas/{docId} {
@@ -125,6 +197,84 @@ service cloud.firestore {
         allow create: if ehMembro(lojaId) && autorCriacaoOk();
         allow update: if ehMembro(lojaId) && autorAtualizacaoOk();
         allow delete: if ehMembro(lojaId);
+      }
+
+      match /privado/acesso {
+        allow read, list: if false;
+        allow create: if authed()
+          && pinValido(request.resource.data.pin)
+          && codigoValido(request.resource.data.codigoRecuperacao)
+          && !exists(acessoPath(lojaId))
+          && (!exists(lojaPath(lojaId)) || lojaDoc(lojaId).data.liderUid == request.auth.uid);
+        allow update: if ehLider(lojaId)
+          && pinValido(request.resource.data.pin)
+          && codigoValido(request.resource.data.codigoRecuperacao)
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['pin', 'codigoRecuperacao', 'atualizado_em']);
+        allow delete: if false;
+      }
+
+      match /tentativas/{uid} {
+        allow read: if authed() && request.auth.uid == uid;
+        allow create: if authed() && request.auth.uid == uid
+          && request.resource.data.falhas == 1
+          && request.resource.data.proximaTentativa is timestamp
+          && request.resource.data.proximaTentativa >= request.time + duration.value(1, 's');
+        allow update: if authed() && request.auth.uid == uid
+          && request.time >= resource.data.proximaTentativa
+          && (
+            (
+              resource.data.falhas < 15
+              && request.resource.data.falhas == resource.data.falhas + 1
+              && request.resource.data.proximaTentativa is timestamp
+              && request.resource.data.proximaTentativa >= resource.data.proximaTentativa + esperaTentativa(resource.data.falhas + 1)
+              && (
+                request.resource.data.falhas < 15
+                || (
+                  request.resource.data.bloqueadoAte is timestamp
+                  && request.resource.data.bloqueadoAte >= request.time + duration.value(15, 'm')
+                )
+              )
+            )
+            || (
+              resource.data.falhas >= 15
+              && resource.data.bloqueadoAte is timestamp
+              && request.time >= resource.data.bloqueadoAte
+              && request.resource.data.falhas == 1
+              && request.resource.data.proximaTentativa is timestamp
+              && request.resource.data.proximaTentativa >= request.time + duration.value(1, 's')
+            )
+            || (
+              registroMembro(lojaId)
+              && request.resource.data.falhas == 0
+            )
+          );
+        allow delete: if ehLider(lojaId);
+      }
+
+      match /ingressos/{uid} {
+        allow read, list: if false;
+        allow create: if authed() && request.auth.uid == uid
+          && pinValido(request.resource.data.pin)
+          && exists(acessoPath(lojaId))
+          && request.resource.data.pin == get(acessoPath(lojaId)).data.pin
+          && tentativasLiberadas(lojaId)
+          && nomeValido(request.resource.data.nome);
+        allow delete: if (authed() && request.auth.uid == uid) || ehLider(lojaId);
+        allow update: if false;
+      }
+
+      match /recuperacao/{uid} {
+        allow read, list: if false;
+        allow create: if authed() && request.auth.uid == uid
+          && pinValido(request.resource.data.pin)
+          && codigoValido(request.resource.data.codigo)
+          && exists(acessoPath(lojaId))
+          && request.resource.data.pin == get(acessoPath(lojaId)).data.pin
+          && request.resource.data.codigo == get(acessoPath(lojaId)).data.codigoRecuperacao
+          && tentativasLiberadas(lojaId);
+        allow delete: if (authed() && request.auth.uid == uid) || ehLider(lojaId);
+        allow update: if false;
       }
     }
   }

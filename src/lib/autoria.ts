@@ -6,7 +6,8 @@ import { gerarId } from "./importacao";
 
 export function autorDaSessao(usuario: User | null): { uid: string; email: string } {
   if (!usuario) return { uid: AUTOR_LOCAL, email: "" };
-  return { uid: usuario.uid, email: (usuario.email ?? "").toLowerCase() };
+  const rotulo = (usuario.displayName || usuario.email || "").trim();
+  return { uid: usuario.uid, email: rotulo };
 }
 
 export function autoriaNova(usuario: User | null): Autoria {

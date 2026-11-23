@@ -16,6 +16,7 @@ import { APP_VERSION, buscarVersaoRemota, temAtualizacao } from "./lib/versao";
 import { useEffect, useState } from "react";
 import { alternarTema, aplicarTema, lerTema, type Tema } from "./lib/tema";
 import { Icone } from "./components/Icone";
+import { encomendaAtrasada, textoEndereco, tipoDeEncomenda } from "./lib/encomendas";
 
 const TITULOS: Record<string, { t: string; s: string }> = {
   "/": { t: "Nova venda", s: "Calculadora" },
@@ -32,7 +33,7 @@ const TITULOS: Record<string, { t: string; s: string }> = {
 };
 
 function Shell() {
-  const { pronto, temDados, config, online, syncando, usuario, ehDono, bloqueado } = useStore();
+  const { pronto, temDados, config, online, syncando, usuario, bloqueado } = useStore();
   const loc = useLocation();
   const meta = loc.pathname.startsWith("/relatorios/")
     ? { t: "Relatório do mês", s: "Totais por dia" }
@@ -81,6 +82,7 @@ function Shell() {
         </div>
       </header>
       {bloqueado && <div className="banner erro aviso-atualizacao">Sua conta está bloqueada nesta loja. Os dados locais continuam no aparelho, mas a nuvem não aceita alterações.</div>}
+      <BannerEncomendasAtrasadas />
       {atualizacao && (
         <div className="banner aviso-atualizacao">
           Há uma versão nova ({atualizacao}). Atualize o site ou baixe o APK em Mais → Ajustes.
@@ -139,3 +141,23 @@ export function App() {
   );
 }
 
+
+
+function BannerEncomendasAtrasadas() {
+  const { encomendas } = useStore();
+  const atrasadas = encomendas.filter((e) => encomendaAtrasada(e));
+  if (atrasadas.length === 0) return null;
+  return (
+    <div className="banner erro aviso-atualizacao" data-testid="banner-encomendas-atrasadas">
+      <strong>{atrasadas.length === 1 ? "1 encomenda atrasada" : `${atrasadas.length} encomendas atrasadas`}</strong>
+      <div className="small">
+        {atrasadas.slice(0, 3).map((e) => {
+          const end = tipoDeEncomenda(e) === "entrega" ? textoEndereco(e.endereco_detalhe, e.endereco) : "";
+          return <div key={e.id}>{e.cliente} · {e.produto}{end ? ` · ${end}` : ""}{e.pago ? "" : " · a pagar"}</div>;
+        })}
+        {atrasadas.length > 3 ? <div>e mais {atrasadas.length - 3}…</div> : null}
+      </div>
+      <NavLink to="/encomendas" className="small">Ver encomendas</NavLink>
+    </div>
+  );
+}

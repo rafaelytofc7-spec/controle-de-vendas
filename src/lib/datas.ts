@@ -1,4 +1,4 @@
-const TZ = "America/Sao_Paulo";
+export const TZ = "America/Sao_Paulo";
 
 export function agoraIso(): string {
   return new Date().toISOString();
@@ -125,3 +125,26 @@ export function diasDoMes(ano: number, mes1a12: number): Date[] {
   }
   return out;
 }
+
+/** Local wall time in America/Sao_Paulo (UTC-3 year-round) to an ISO instant. */
+export function horarioLocalParaIso(dia: string, hora: string): string {
+  const [hh, mm] = (hora || "00:00").split(":");
+  const h = String(Number(hh) || 0).padStart(2, "0");
+  const m = String(Number(mm) || 0).padStart(2, "0");
+  return new Date(`${dia}T${h}:${m}:00-03:00`).toISOString();
+}
+
+export function isoParaDiaHora(iso: string, timeZone = TZ): { dia: string; hora: string } {
+  const p = zonedParts(iso, timeZone);
+  const d = new Date(iso);
+  const map: Record<string, string> = {};
+  for (const part of formatter(timeZone).formatToParts(d)) {
+    if (part.type !== "literal") map[part.type] = part.value;
+  }
+  return { dia: p.chaveDia, hora: `${map.hour ?? "00"}:${map.minute ?? "00"}` };
+}
+
+export function prazoLembretePadrao(dataEntregaIso: string, hora = "12:00"): string {
+  return horarioLocalParaIso(zonedParts(dataEntregaIso).chaveDia, hora || "12:00");
+}
+
