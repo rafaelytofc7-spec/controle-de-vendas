@@ -9,19 +9,26 @@ import Chegou from "./telas/Chegou";
 import Fornecedores from "./telas/Fornecedores";
 import Contagem from "./telas/Contagem";
 import Aparelho from "./telas/Aparelho";
+import Encomendas from "./telas/Encomendas";
+import Promocoes from "./telas/Promocoes";
+import PrecosFornecedor from "./telas/PrecosFornecedor";
+import Relatorios from "./telas/Relatorios";
+import Painel from "./telas/Painel";
 import { AparelhoBloqueado, LigarAparelho, NovaVersao } from "./telas/Portas";
 
-type Tela = "caixa" | "produtos" | "chegou" | "fornecedores" | "contagem" | "ajustes" | "mais";
-const TITULOS: Record<Tela, string> = { caixa: "Caixa", produtos: "Produtos", chegou: "Chegou mercadoria", fornecedores: "Fornecedores", contagem: "Contagem de estoque", ajustes: "Aparelho e ajustes", mais: "Mais" };
-const ICONES: Record<Tela, string> = { caixa: "🧾", produtos: "🥬", chegou: "📦", fornecedores: "🚚", contagem: "🔢", ajustes: "⚙️", mais: "⋯" };
+type Tela = "painel" | "caixa" | "produtos" | "chegou" | "encomendas" | "promocoes" | "precos" | "relatorios" | "fornecedores" | "contagem" | "ajustes" | "mais";
+const TITULOS: Record<Tela, string> = { painel: "Painel", caixa: "Caixa", produtos: "Produtos", chegou: "Chegou mercadoria", encomendas: "Encomendas", promocoes: "Promoções",
+  precos: "Preços por fornecedor", relatorios: "Relatórios diários", fornecedores: "Fornecedores", contagem: "Contagem de estoque", ajustes: "Aparelho e ajustes", mais: "Mais" };
+const ICONES: Record<Tela, string> = { painel: "📊", caixa: "🧾", produtos: "🥬", chegou: "📦", encomendas: "📝", promocoes: "🏷️", precos: "📈", relatorios: "🗓️", fornecedores: "🚚", contagem: "🔢", ajustes: "⚙️", mais: "⋯" };
+const SO_ADMIN: Tela[] = ["fornecedores", "contagem", "promocoes", "precos"];
 
-function lerTela(): Tela { const h = location.hash.replace("#", "") as Tela; return h in TITULOS ? h : "caixa"; }
+function lerTela(): Tela | null { const h = location.hash.replace("#", "") as Tela; return h in TITULOS ? h : null; }
 
 export default function App() {
   const fase = useLoja((e) => e.fase);
   const papel = useLoja((e) => e.papel);
   const largo = useLargo();
-  const [tela, setTelaS] = useState<Tela>(lerTela);
+  const [telaHash, setTelaS] = useState<Tela | null>(lerTela);
   const operador = useLoja((e) => e.operador);
   const [perguntar, setPerguntar] = useState(false);
   const [jaPerguntou, setJaPerguntou] = useState(false);
@@ -37,10 +44,16 @@ export default function App() {
 
   const admin = papel === "admin";
   const modalOperador = (perguntar || (!operador && !jaPerguntou)) ? <PerguntaOperador aoFechar={() => { setPerguntar(false); setJaPerguntou(true); }} /> : null;
-  const telaOk: Tela = (tela === "fornecedores" || tela === "contagem") && !admin ? "caixa" : tela === "mais" && largo ? "ajustes" : tela;
+  const tela: Tela = telaHash ?? (largo && admin ? "painel" : "caixa");
+  const telaOk: Tela = SO_ADMIN.includes(tela) && !admin ? "caixa" : tela === "mais" && largo ? "ajustes" : tela;
   const conteudo = (
     <>
+      {telaOk === "painel" && <Painel ir={(t) => setTela(t as Tela)} />}
       {telaOk === "caixa" && <Caixa />}
+      {telaOk === "encomendas" && <Encomendas />}
+      {telaOk === "promocoes" && <Promocoes />}
+      {telaOk === "precos" && <PrecosFornecedor />}
+      {telaOk === "relatorios" && <Relatorios />}
       {telaOk === "produtos" && <Produtos />}
       {telaOk === "chegou" && <Chegou />}
       {telaOk === "fornecedores" && <Fornecedores />}
@@ -52,7 +65,8 @@ export default function App() {
   const faixa = EH_TESTE ? <div className="teste-faixa" data-testid="faixa-teste">VERSÃO DE TESTE · loja “{LOJA}” · as vendas daqui não contam</div> : null;
 
   if (largo) {
-    const menu: Tela[] = admin ? ["caixa", "produtos", "chegou", "fornecedores", "contagem", "ajustes"] : ["caixa", "produtos", "chegou", "ajustes"];
+    const menu: Tela[] = admin ? ["painel", "caixa", "produtos", "chegou", "encomendas", "promocoes", "precos", "relatorios", "fornecedores", "contagem", "ajustes"]
+      : ["painel", "caixa", "produtos", "chegou", "encomendas", "relatorios", "ajustes"];
     return (
       <div className="app">
         {faixa}
@@ -65,7 +79,7 @@ export default function App() {
           <main className="main">
             <div className="cab-pc"><h1>{TITULOS[telaOk]}</h1><StatusSync /></div>
             <AlertaSync />
-            <div className="corpo" style={{ maxWidth: telaOk === "caixa" ? 560 : telaOk === "chegou" ? 720 : 1100 }}>{conteudo}</div>
+            <div className="corpo" style={{ maxWidth: telaOk === "caixa" ? 560 : telaOk === "chegou" || telaOk === "encomendas" ? 760 : 1200 }}>{conteudo}</div>
           </main>
         </div>
         {modalOperador}
@@ -86,7 +100,7 @@ export default function App() {
       <div className="corpo">{conteudo}</div>
       <nav className="nav">
         {nav.map((t) => (
-          <button key={t} className={telaOk === t || (t === "mais" && ["ajustes", "fornecedores", "contagem"].includes(telaOk)) ? "on" : ""} onClick={() => setTela(t)} data-testid={`nav-${t}`}>
+          <button key={t} className={telaOk === t || (t === "mais" && !["caixa", "produtos", "chegou"].includes(telaOk)) ? "on" : ""} onClick={() => setTela(t)} data-testid={`nav-${t}`}>
             <i>{ICONES[t]}</i>{t === "chegou" ? "Chegou" : TITULOS[t]}
           </button>
         ))}
@@ -117,7 +131,7 @@ function RodapePC() {
 }
 
 function Mais({ setTela, admin }: { setTela: (t: Tela) => void; admin: boolean }) {
-  const itens: Tela[] = admin ? ["fornecedores", "contagem", "ajustes"] : ["ajustes"];
+  const itens: Tela[] = admin ? ["painel", "encomendas", "promocoes", "precos", "relatorios", "fornecedores", "contagem", "ajustes"] : ["painel", "encomendas", "relatorios", "ajustes"];
   return (
     <>
       <div className="card" style={{ padding: "0 12px" }}>
@@ -127,8 +141,6 @@ function Mais({ setTela, admin }: { setTela: (t: Tela) => void; admin: boolean }
           </button>
         ))}
       </div>
-      <div className="card"><h3>Chegando nas próximas versões</h3>
-        <p className="peq-t mut" style={{ margin: 0 }}>Encomendas · Sugestões de promoção · Relatório diário automático · Gráfico de preços por fornecedor · Painel do PC</p></div>
     </>
   );
 }
