@@ -176,3 +176,9 @@ Tudo dentro da loja `principal`. Todas as tabelas têm `id` (gerado no aparelho)
 - Servidor: `v3_loja_segredos.caixa_automatico` (ligado em teste/ensaio; **principal desligado até a virada**), só `p_plataforma='android'`, trava de 30 entradas automáticas/hora.
 - RLS: `v3_precos_diarios`, `v3_promocoes_sugeridas`, `v3_atividades`, `v3_cobrancas` só Admin lê. Caixa cria produto novo sempre com preço 0.
 - Próximo: app novo em Flutter (pasta `flutter/` / repo novo), mesma base Supabase.
+
+## Banca (app novo em Flutter) — 27/11
+- Repositório: https://github.com/rafaelytofc7-spec/banca-app (público, sem nome da loja).
+- 1.0.0-teste.1 (40001): APK na release v1.0.0-teste.1, painel web em https://rafaelytofc7-spec.github.io/banca-app/ (loja de teste "ensaio").
+- Versões: linhas `banca-android`/`banca-web`/`banca-windows` em v3_app_versao (atual 40001, mínima 0).
+- Windows: `ci/windows.yml` pronto, aguardando permissão `workflow` do gh.
