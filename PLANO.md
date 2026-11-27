@@ -163,3 +163,10 @@ Tudo dentro da loja `principal`. Todas as tabelas têm `id` (gerado no aparelho)
   - alerta “Sincronização atrasada X min · Y faltando · Reenviar” no celular e no PC; o Admin vê também o atraso dos outros aparelhos; em Ajustes → Sincronização há “🔁 Reenviar tudo”.
 - **Backup no GitHub (repo privado `controle-de-vendas-dados`, pasta `v3/`)**: vendas por mês (com itens), entradas, estoque, cadastro, manifesto por dia; incremental e conferido dia a dia com o servidor (se não bater, baixa tudo). Leitura pela função `v3_backup_exportar`, protegida por chave (só o hash fica no banco).
 - **Conferência no box** (`scripts/conferir-sync.mjs`): servidor × backup do GitHub × app antigo (cópia somente-leitura guardada no repo) × cópia da rotina (`public.vendas`).
+
+## 3.0.0-teste.4 (27/11)
+- Telas: encomendas, preços por fornecedor (gráfico), sugestões de promoção (Admin), relatórios diários (pg_cron `v3-rotina-diaria` 00:10 BRT) e painel do PC.
+- Entrada de aparelhos padrão: convite QR de uso único (ou código de recuperação). APK sem código de entrada.
+- Correção: `carregar()` não sobrescreve mudanças locais/tempo real feitas durante o download.
+- Backup privado: `scripts/backup-agora.sh` (idempotente, sem login interativo) roda pela rotina horária.
+- Nada ao vivo: caixa, migração para `principal` e chave anon antiga aguardam o OK do Rafael.
