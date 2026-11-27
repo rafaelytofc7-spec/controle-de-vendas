@@ -166,7 +166,7 @@ async function entrar(codigo?: string): Promise<void> {
     localStorage.setItem("cv3-entrou", "1");
     set({ fase: "pronto", uid, papel: r.papel, meuNome: r.nome, erroEntrada: r.erro ? "Código inválido ou vencido." : null, online: true });
     await carregar();
-    assinar();
+    await assinar();
     void enviarFila().then(() => vigiar());
   } catch (e) {
     // sem internet: se já entrou antes, abre com os dados locais
@@ -246,8 +246,11 @@ const TABELAS: [string, keyof Estado, (r: any) => string][] = [
   ["v3_entradas", "entradas", (r) => r.id], ["v3_entrada_itens", "entradaItens", (r) => r.id], ["v3_aparelhos", "aparelhos", (r) => r.uid],
 ];
 
-function assinar() {
+async function assinar() {
   const s = supa();
+  // garante que o tempo real usa o login deste aparelho (senão o RLS não deixa os eventos chegarem)
+  const { data: { session } } = await s.auth.getSession();
+  if (session) { try { await s.realtime.setAuth(session.access_token); } catch { /* tenta de novo na próxima reconexão */ } }
   if (canal) { void s.removeChannel(canal); canal = null; }
   let ch = s.channel(`cv3-${LOJA}-${novoId().slice(0, 8)}`);
   for (const [tabela, campo, chave] of TABELAS) {
@@ -291,7 +294,7 @@ export async function reconectar(_motivo: string): Promise<void> {
     if (estado.fase !== "pronto" || !estado.uid) { await entrar(); return; }
     await checarVersao();
     await supa().auth.getSession();
-    if (!estado.tempoReal) assinar();
+    if (!estado.tempoReal) await assinar();
     await enviarFila();
   } finally { reconectando = false; }
 }
@@ -543,7 +546,9 @@ function montarPayload(v: Venda): Record<string, unknown> {
 /** Põe de novo na fila (sem mexer no estoque local, que já foi descontado). */
 function reenfileirar(tipo: TipoOp, dados: Record<string, unknown>) {
   if (estado.fila.some((o) => o.tipo === tipo && o.dados.id === dados.id)) return;
-  const op: Op = { id: novoId(), tipo, dados, criado_em: new Date().toISOString(), tentativas: 0 };
+  // a "idade" da operação é a da venda original: o atraso mostrado é o real
+  const criado = typeof dados.criado_em === "string" ? dados.criado_em : diario[dados.id as string]?.criado_em ?? new Date().toISOString();
+  const op: Op = { id: novoId(), tipo, dados, criado_em: criado, tentativas: 0 };
   const v = estado.vendas[dados.id as string];
   set({ fila: [...estado.fila, op], ...(v && tipo === "venda" ? { vendas: { ...estado.vendas, [v.id]: { ...v, pendente: true } } } : {}) });
 }
@@ -639,9 +644,11 @@ async function baixarVendas(ids: string[]) {
 export async function reenviarTudo(): Promise<{ reenviadas: number; baixadas: number } | null> {
   set({ fila: estado.fila.map((o) => (o.erro && /internet|rede|fetch|network|timeout/i.test(o.erro) ? { ...o, erro: undefined } : o)) });
   await gravarFila();
-  await reconectar("reenviar");
+  await reconectar("reenviar").catch(() => {});
   if (estado.fase === "pronto" && estado.online) await carregar().catch(() => {});
-  await enviarFila();
+  await enviarFila().catch(() => {});
+  // se uma conferência automática estiver rodando, espera ela acabar e confere de novo (34 dias)
+  for (let i = 0; i < 60 && vigiando; i++) await new Promise((ok) => setTimeout(ok, 250));
   return vigiar(true);
 }
 

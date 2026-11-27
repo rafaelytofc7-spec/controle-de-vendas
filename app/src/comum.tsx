@@ -125,9 +125,10 @@ export function useProblemasSync() {
   const erros = fila.filter((o) => o.erro).length;
   const atrasoMin = Math.floor(atrasoSeg(getEstado()) / 60);
   const semConferir = vigia.okEm ? minDe(vigia.okEm)! : null;
-  const faltando = pend + erros + vigia.faltandoAparelho;
+  const faltando = pend + erros;
   let meu: { min: number; faltando: number; texto: string } | null = null;
-  if ((pend && atrasoMin >= 2) || erros || vigia.faltandoServidor || vigia.faltandoAparelho || (online && semConferir != null && semConferir >= 10 && pend)) {
+  // só alerta o que ainda não foi resolvido (o que o vigia já corrigiu aparece em Ajustes → Sincronização)
+  if ((pend && atrasoMin >= 2) || erros || (online && semConferir != null && semConferir >= 10 && pend)) {
     const min = Math.max(atrasoMin, pend ? semConferir ?? 0 : 0);
     meu = { min, faltando, texto: `Sincronização atrasada ${min} min · ${faltando} faltando` };
   }

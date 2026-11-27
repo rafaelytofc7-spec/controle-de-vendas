@@ -106,6 +106,8 @@ await t("Caixa apaga a própria venda e o estoque volta", async () => {
 
 await t("tempo real: venda de um aparelho chega no outro", async () => {
   const id = randomUUID();
+  const { data: { session } } = await admin.auth.getSession();
+  admin.realtime.setAuth(session.access_token);
   const chegou = new Promise((res, rej) => {
     const timer = setTimeout(() => rej(new Error("não chegou em 15 s")), 15000);
     const ch = admin.channel(`t-${tag}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "v3_vendas", filter: `loja_id=eq.${LOJA}` }, (p) => {
@@ -162,6 +164,7 @@ await t("vigia: operador na venda, sinal com manifesto igual ao recalculado, ids
   const { data: a } = await admin.from("v3_aparelhos").select("operador,pendentes,atraso_seg,sync_em").eq("loja_id", LOJA).eq("nome", "Caixa teste");
   assert.ok(a.some((x) => x.operador === `Bia ${tag}` && x.pendentes === 3 && x.atraso_seg === 300 && x.sync_em));
   await falha(rpc(estranho, "v3_sync_ids", { p_loja: LOJA, p_dia: dia }), /sem_acesso|42501|permission/);
+  await rpc(caixa, "v3_sync_sinal", { p_loja: LOJA, p_versao: 30003, p: { operador: `Bia ${tag}`, pendentes: 0, atraso_seg: 0, em_dia: true } });
 });
 
 await t("backup: exportação só com a chave (aparelho e chave errada não conseguem)", async () => {

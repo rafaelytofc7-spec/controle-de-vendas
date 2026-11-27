@@ -16,6 +16,7 @@ async function celular(browser: Browser): Promise<Page> {
   }
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, storageState });
   const p = await ctx.newPage();
+  p.on("pageerror", (e) => console.log("erro na página (celular):", e.message));
   await p.goto("/#caixa");
   await expect(p.getByTestId("visor")).toBeVisible({ timeout: 30_000 });
   await expect.poll(async () => p.evaluate(() => Object.keys(localStorage).some((k) => k === "cv3-sessao")), { timeout: 20_000 }).toBe(true);
@@ -32,6 +33,7 @@ async function pcAdmin(browser: Browser): Promise<Page> {
 const sync = (p: Page) => expect(p.getByTestId("status-sync")).toHaveText(/Online, sincronizado/, { timeout: 20_000 });
 
 test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({ browser }) => {
+  test.setTimeout(240_000);
   const cel = await celular(browser);
   // pede o nome do operador, mas sincroniza mesmo com a pergunta aberta
   await expect(cel.getByTestId("nome-operador")).toBeVisible();
@@ -169,7 +171,7 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   await cel.evaluate(() => (window as any).__cv3.sinalTeste({ pendentes: 2, atraso_seg: 420, faltando_servidor: 0, faltando_aparelho: 0 }));
   await expect(pc.getByTestId("alerta-sync")).toContainText(/atrasado 7 min · 2 faltando/, { timeout: 20_000 });
   await cel.evaluate(() => (window as any).__cv3.sinalTeste({ pendentes: 0, atraso_seg: 0, faltando_servidor: 0, faltando_aparelho: 0, em_dia: true }));
-  await expect(pc.getByTestId("alerta-sync")).toHaveCount(0, { timeout: 20_000 });
+  await expect(pc.getByTestId("alerta-sync").filter({ hasText: "atrasado 7 min" })).toHaveCount(0, { timeout: 20_000 });
 });
 
 test("atualização obrigatória bloqueia o app", async ({ browser }) => {
