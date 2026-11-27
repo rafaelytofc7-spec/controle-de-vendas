@@ -32,7 +32,7 @@ await t("sem código não entra e não lê nada", async () => {
 });
 
 await t("código do APK entra como Caixa; recuperação entra como Admin", async () => {
-  assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_entrada, p_nome: "Caixa teste", p_plataforma: "web", p_versao: 30001 })).papel, "caixa");
+  assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_entrada, p_nome: "Caixa teste", p_plataforma: "web", p_versao: 30002 })).papel, "caixa");
   assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_nome: "Caixa teste" })).papel, "caixa"); // já é membro, sem código
   assert.equal((await rpc(admin, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_recuperacao, p_nome: "Admin teste" })).papel, "admin");
 });
@@ -50,7 +50,7 @@ await t("Caixa cadastra produto novo mas não edita preço, fornecedor nem estoq
 await t("Admin: fornecedor, contagem inicial e entrada → custo médio certo", async () => {
   await rpc(admin, "v3_salvar_fornecedor", { p_loja: LOJA, p: { id: forn, nome: `Fornecedor ${tag}`, tipo: "Ceasa" } });
   await rpc(admin, "v3_contagem", { p_loja: LOJA, p: { id: `c-${tag}`, itens: [{ produto_id: prod, quantidade: 10, custo: 5 }] } });
-  const r = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p_plataforma: "web", p_versao: 30001,
+  const r = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p_plataforma: "web", p_versao: 30002,
     p: { id: `e-${tag}`, fornecedor_id: forn, frete: 4, itens: [{ id: `e-${tag}-1`, produto_id: prod, quantidade: 20, valor_pago: 100, perda_pct: 8 }] } });
   assert.ok(Math.abs(r.itens[0].custo_efetivo - 104 / 18.4) < 1e-3);
   const rep = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p: { id: `e-${tag}`, itens: [] } });
@@ -67,8 +67,8 @@ const venda = randomUUID();
 await t("venda com itens: baixa estoque, guarda custo, reenvio não duplica", async () => {
   const p = { id: venda, total: 11.24, forma: "pix", criado_em: new Date().toISOString(),
     itens: [{ id: `${venda}-1`, produto_id: prod, nome: "Tomate", unidade: "kg", quantidade: 1.25, preco_unit: 8.99, total: 11.24 }] };
-  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30001 });
-  const r2 = await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30001 });
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30002 });
+  const r2 = await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30002 });
   assert.equal(r2.repetida, true);
   const { data: v } = await caixa.from("v3_vendas").select("*").eq("loja_id", LOJA).eq("id", venda).single();
   assert.equal(v.tem_itens, true); assert.ok(Number(v.custo_total) > 6 && Number(v.custo_total) < 7.5);
@@ -78,7 +78,7 @@ await t("venda com itens: baixa estoque, guarda custo, reenvio não duplica", as
 
 await t("venda rápida só com valor", async () => {
   const id = randomUUID();
-  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 7.5, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30001 });
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 7.5, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30002 });
   const { data: v } = await caixa.from("v3_vendas").select("tem_itens,custo_total,origem").eq("loja_id", LOJA).eq("id", id).single();
   assert.deepEqual(v, { tem_itens: false, custo_total: null, origem: "v3" });
 });
@@ -100,7 +100,7 @@ await t("tempo real: venda de um aparelho chega no outro", async () => {
       if (p.new.id === id) { clearTimeout(timer); res(Date.now()); admin.removeChannel(ch); }
     }).subscribe(async (s, err) => {
       if (s !== "SUBSCRIBED") console.log("   canal:", s, err?.message ?? "");
-      if (s === "SUBSCRIBED") { globalThis.t0 = Date.now(); await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 3, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30001 }); }
+      if (s === "SUBSCRIBED") { globalThis.t0 = Date.now(); await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 3, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30002 }); }
     });
   });
   const fim = await chegou;

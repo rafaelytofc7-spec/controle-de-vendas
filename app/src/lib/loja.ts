@@ -114,15 +114,23 @@ export async function iniciar(codigo?: string): Promise<void> {
 async function entrar(codigo?: string): Promise<void> {
   const s = supa();
   try {
+    // a versão mínima é checada antes de tudo (não precisa de login)
+    await checarVersao();
+    if (estado.fase === "bloqueado_versao") return;
     let { data: { session } } = await s.auth.getSession();
     if (!session) {
       const r = await s.auth.signInAnonymously();
-      if (r.error) throw r.error;
+      if (r.error) {
+        if (/rate limit/i.test(r.error.message)) {
+          window.setTimeout(() => void entrar(codigo), 60_000);
+          set({ fase: localStorage.getItem("cv3-entrou") === "1" ? "pronto" : "precisa_codigo", erroEntrada: "Muitos aparelhos entrando por esta internet agora. Tentando de novo em 1 minuto…" });
+          return;
+        }
+        throw r.error;
+      }
       session = r.data.session;
     }
     const uid = session?.user.id ?? null;
-    await checarVersao();
-    if (estado.fase === "bloqueado_versao") return;
     const nomePadrao = localStorage.getItem("cv3-nome") || (PLATAFORMA === "web" ? "Computador" : "Celular");
     const { data, error } = await s.rpc("v3_entrar", {
       p_loja: LOJA, p_codigo: codigo || CODIGO_ENTRADA || null, p_nome: nomePadrao, p_plataforma: PLATAFORMA, p_versao: VERSAO_CODE,
