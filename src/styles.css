@@ -533,6 +533,7 @@ html.leitor-nativo-ativo .leitor-visor { background: transparent; }
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
+.dialog-acoes { position: sticky; bottom: 0; background: var(--papel); padding-top: 10px; padding-bottom: 2px; z-index: 1; }
 .form-encomenda { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
 .grade-form { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .bloco-endereco {

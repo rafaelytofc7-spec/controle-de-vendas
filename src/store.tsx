@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { ouvirAuth, sairAuth, usuarioAtual, type NuvemUser } from "./lib/supabase";
+import { getSupabase, ouvirAuth, sairAuth, usuarioAtual, type NuvemUser } from "./lib/supabase";
 import {
   bancoTemDados,
   exportarDados,
@@ -39,7 +39,7 @@ import { estadoStatusNuvem, rotuloStatusNuvem } from "./lib/statusNuvem";
 import { isPermissionDenied, mensagemErroSync, rotuloOperacao } from "./lib/errosSync";
 import { atualizarPresenca, ouvirMembros } from "./lib/presencaNuvem";
 import { INTERVALO_PRESENCA_MS } from "./lib/presenca";
-import { entrarComNome, isNaoEMembroError, nomePadraoAparelho, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
+import { entrarComNome, esperarSessaoEMembro, isNaoEMembroError, nomePadraoAparelho, recuperarLideranca, verificarParticipacao } from "./lib/acesso";
 import { LOJA_NUVEM_ID } from "./lib/supabasePadrao";
 import { calcularReabastecimento } from "./lib/reabastecimento";
 import { acrescentarVendaAgregados, agregarVendas, type AgregadosVendas } from "./lib/agregados";
@@ -133,8 +133,8 @@ const cfgVazia = (loja: string): ConfiguracaoLoja => ({
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [pronto, setPronto] = useState(false);
   const [temDados, setTemDados] = useState(false);
-  const [loja, setLoja] = useState("loja");
-  const [config, setConfig] = useState<ConfiguracaoLoja>(cfgVazia("loja"));
+  const [loja, setLoja] = useState(LOJA_NUVEM_ID);
+  const [config, setConfig] = useState<ConfiguracaoLoja>(cfgVazia(LOJA_NUVEM_ID));
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [entregas, setEntregas] = useState<Entrega[]>([]);
@@ -194,7 +194,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setCodigoRecuperacao(codigoLocal);
     setEhDono(Boolean(eq?.ehDono || eq?.ehLider));
     setBloqueado(Boolean(eq?.bloqueado));
-    const l = lojaMeta || cfg?.loja || "loja";
+    const l = LOJA_NUVEM_ID;
     setLoja(l);
     const cfgFinal = cfg ?? cfgVazia(l);
     setConfig(cfgFinal);
@@ -250,17 +250,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const registrarVenda = useCallback(async (valor: number, idPrevio?: string) => {
-    const v: Venda = { id: idPrevio || gerarId(), loja, valor, criado_em: agoraIso(), atualizado_em: agoraIso(), ...autoriaNova(usuarioDaSessao()) };
+    const v: Venda = { id: idPrevio || gerarId(), loja: LOJA_NUVEM_ID, valor, criado_em: agoraIso(), atualizado_em: agoraIso(), ...autoriaNova(usuarioDaSessao()) };
     setVendas((xs) => xs.some((x) => x.id === v.id) ? xs : [v, ...xs]);
-    void upsertVenda(v)
-      .then(() => anotar("criar", "vendas", v.id, `Venda de ${valor.toFixed(2)}`))
-      .catch((e) => {
-        const msg = e instanceof Error ? e.message : "Não foi possível gravar a venda neste aparelho.";
-        console.error("gravar venda", e);
-        setErroSync(msg);
-      });
+    try {
+      await upsertVenda(v);
+      void anotar("criar", "vendas", v.id, `Venda de ${valor.toFixed(2)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Não foi possível gravar a venda neste aparelho.";
+      console.error("gravar venda", e);
+      setErroSync(msg);
+    }
+    enviarAgoraRef.current();
     return v;
-  }, [loja, usuario, anotar]);
+  }, [usuario, anotar]);
 
   const excluirVenda = useCallback(async (id: string) => {
     const atual = vendas.find((x) => x.id === id);
@@ -269,13 +271,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     await upsertVenda(row);
     setVendas((xs) => xs.filter((x) => x.id !== id));
     await anotar("excluir", "vendas", id, `Excluiu venda de ${atual.valor.toFixed(2)}`);
+    enviarAgoraRef.current();
   }, [vendas, usuario, anotar]);
 
   const salvarProduto = useCallback(async (p: Omit<Produto, "atualizado_em" | "loja" | "criadoPor" | "criadoPorEmail" | "atualizadoPor" | "atualizadoPorEmail"> & { loja?: string } & Partial<import("./lib/types").Autoria>) => {
     const atual = produtos.find((x) => x.id === p.id);
     const aut = atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario);
-    const row: Produto = { ...p, ...aut, loja: p.loja || loja, atualizado_em: agoraIso() };
+    const row: Produto = { ...aut, ...p, loja: p.loja || loja, atualizado_em: agoraIso() };
     await upsertProduto(row);
+    enviarAgoraRef.current();
     setProdutos((xs) => {
       const i = xs.findIndex((x) => x.id === row.id);
       if (i < 0) return [...xs, row].sort((a, b) => a.ordem - b.ordem);
@@ -288,6 +292,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const atual = produtos.find((x) => x.id === id);
     if (!atual) return;
     await upsertProduto({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
+    enviarAgoraRef.current();
     setProdutos((xs) => xs.filter((x) => x.id !== id));
     await anotar("excluir", "produtos", id, `Excluiu ${atual.nome}`);
   }, [produtos, usuario, anotar]);
@@ -296,15 +301,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const id = e.id || gerarId();
     const atual = entregas.find((x) => x.id === id);
     const row: Entrega = {
+      ...(atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario)),
       id, loja, cliente: e.cliente, endereco: e.endereco,
       telefone: e.telefone ?? atual?.telefone ?? null,
       valor: e.valor, status: e.status ?? atual?.status ?? "pendente",
       criado_em: e.criado_em || atual?.criado_em || agoraIso(),
       concluido_em: e.concluido_em ?? atual?.concluido_em ?? null,
       atualizado_em: agoraIso(),
-      ...(atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario)),
     };
     await upsertEntrega(row);
+    enviarAgoraRef.current();
     await anotar(atual ? "editar" : "criar", "entregas", row.id, `${atual ? "Editou" : "Registrou"} entrega de ${row.cliente}`);
     setEntregas((xs) => [row, ...xs.filter((x) => x.id !== id)]);
   }, [loja, entregas, usuario, anotar]);
@@ -318,6 +324,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       atualizado_em: agoraIso(),
     };
     await upsertEntrega(row);
+    enviarAgoraRef.current();
     await anotar("editar", "entregas", id, `Status da entrega de ${atual.cliente}: ${status}`);
     setEntregas((xs) => xs.map((x) => x.id === id ? row : x));
   }, [entregas, usuario, anotar]);
@@ -326,6 +333,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const atual = entregas.find((x) => x.id === id);
     if (!atual) return;
     await upsertEntrega({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
+    enviarAgoraRef.current();
     setEntregas((xs) => xs.filter((x) => x.id !== id));
     await anotar("excluir", "entregas", id, `Excluiu entrega de ${atual.cliente}`);
   }, [entregas, usuario, anotar]);
@@ -346,6 +354,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const prazo = e.prazo_lembrete ?? (dataEntrega ? montarPrazo(dataEntrega, horaPadrao, horaPadrao) : (atual?.prazo_lembrete ?? null));
     const detalhe = tipo === "entrega" ? (e.endereco_detalhe ?? atual?.endereco_detalhe ?? null) : null;
     const row: Encomenda = {
+      ...(atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario)),
       id, loja, cliente: e.cliente, produto: e.produto, valor: e.valor,
       pago: e.pago ?? atual?.pago ?? false,
       forma_pagamento: e.forma_pagamento ?? atual?.forma_pagamento ?? null,
@@ -366,9 +375,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       criado_em: e.criado_em || atual?.criado_em || agoraIso(),
       concluido_em: e.concluido_em ?? atual?.concluido_em ?? null,
       atualizado_em: agoraIso(),
-      ...(atual ? autoriaAtualizacao(atual, usuario) : autoriaNova(usuario)),
     };
     await upsertEncomenda(row);
+    enviarAgoraRef.current();
     const lista = [row, ...encomendas.filter((x) => x.id !== id)];
     setEncomendas(lista);
     await anotar(atual ? "editar" : "criar", "encomendas", row.id, `${atual ? "Editou" : "Registrou"} encomenda de ${row.cliente}`);
@@ -389,6 +398,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       atualizado_em: agora,
     };
     await upsertEncomenda(row);
+    enviarAgoraRef.current();
     const lista = encomendas.map((x) => x.id === id ? row : x);
     setEncomendas(lista);
     await anotar("editar", "encomendas", id, `Confirmou entrega da encomenda de ${atual.cliente}`);
@@ -400,6 +410,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!atual) return;
     const row: Encomenda = { ...autoriaAtualizacao(atual, usuario), status: "cancelada", atualizado_em: agoraIso() };
     await upsertEncomenda(row);
+    enviarAgoraRef.current();
     const lista = encomendas.map((x) => x.id === id ? row : x);
     setEncomendas(lista);
     await anotar("editar", "encomendas", id, `Cancelou encomenda de ${atual.cliente}`);
@@ -419,6 +430,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       atualizado_em: agoraIso(),
     };
     await upsertEncomenda(row);
+    enviarAgoraRef.current();
     const lista = encomendas.map((x) => x.id === id ? row : x);
     setEncomendas(lista);
     await anotar("editar", "encomendas", id, `Reabriu encomenda de ${atual.cliente}`);
@@ -440,6 +452,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       atualizado_em: agora,
     };
     await upsertEncomenda(row);
+    enviarAgoraRef.current();
     setEncomendas((xs) => xs.map((x) => x.id === id ? row : x));
     await anotar("editar", "encomendas", id, pago ? `Marcou encomenda de ${atual.cliente} como paga` : `Marcou encomenda de ${atual.cliente} como a pagar`);
   }, [encomendas, usuario, anotar, nomeSessao]);
@@ -448,6 +461,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const atual = encomendas.find((x) => x.id === id);
     if (!atual) return;
     await upsertEncomenda({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
+    enviarAgoraRef.current();
     const lista = encomendas.filter((x) => x.id !== id);
     setEncomendas(lista);
     await anotar("excluir", "encomendas", id, `Excluiu encomenda de ${atual.cliente}`);
@@ -470,6 +484,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ...autoriaNova(usuario),
     };
     await upsertReabastecimento(row);
+    enviarAgoraRef.current();
     setReabastecimentos((xs) => [row, ...xs]);
     await anotar("criar", "reabastecimentos", row.id, `Reabasteceu ${row.produto}`);
     return row;
@@ -479,6 +494,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const atual = reabastecimentos.find((x) => x.id === id);
     if (!atual) return;
     await upsertReabastecimento({ ...autoriaAtualizacao(atual, usuario), excluido: true, atualizado_em: agoraIso() });
+    enviarAgoraRef.current();
     setReabastecimentos((xs) => xs.filter((x) => x.id !== id));
     await anotar("excluir", "reabastecimentos", id, `Excluiu reabastecimento de ${atual.produto}`);
   }, [reabastecimentos, usuario, anotar]);
@@ -492,6 +508,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ...autoriaNova(usuario),
     };
     await upsertCobranca(row);
+    enviarAgoraRef.current();
     setCobrancas((xs) => [row, ...xs]);
     await anotar("criar", "cobrancas", row.id, `Cobrança de ${valor.toFixed(2)}`);
     return row;
@@ -507,6 +524,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     const row: Cobranca = { ...autoriaAtualizacao(atual, usuario), status: "paga", pago_em: agoraIso(), venda_id: vendaId, mensagem: "Pagamento confirmado.", atualizado_em: agoraIso() };
     await upsertCobranca(row);
+    enviarAgoraRef.current();
     await anotar("editar", "cobrancas", id, `Confirmou cobrança de ${atual.valor.toFixed(2)}`);
     setCobrancas((xs) => xs.map((x) => x.id === id ? row : x));
   }, [cobrancas, registrarVenda, usuario, anotar]);
@@ -516,6 +534,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!atual || atual.status !== "aguardando") return;
     const row: Cobranca = { ...autoriaAtualizacao(atual, usuario), status: "cancelada", mensagem: "Cobrança cancelada.", atualizado_em: agoraIso() };
     await upsertCobranca(row);
+    enviarAgoraRef.current();
     await anotar("editar", "cobrancas", id, `Cancelou cobrança de ${atual.valor.toFixed(2)}`);
     setCobrancas((xs) => xs.map((x) => x.id === id ? row : x));
   }, [cobrancas, usuario, anotar]);
@@ -614,6 +633,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     await recarregar();
     const cursorEntrada = await obterCursorSync();
     setCursorOuvir((atual) => (atual ? atual : (cursorEntrada ?? "")));
+    enviarAgoraRef.current();
     return { primeiraVez: estadoPin.primeiraVez, codigoRecuperacao: estadoPin.codigoRecuperacao, retidosImportados };
   }, [firebaseCfg, recarregar, conferirParticipacao]);
 
@@ -622,12 +642,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [tentativaEntrada, setTentativaEntrada] = useState(0);
   useEffect(() => {
     if (!pronto || !firebaseCfg || !configValida(firebaseCfg)) return;
-    if (equipe && !precisaReentrarPin) return;
     if (!online || entrandoRef.current) return;
     entrandoRef.current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
       try {
+        // Re-enter when the persisted session is gone even if a stale equipe cache remains
+        // (reinstall / cleared auth). aparelho_id rebinds the same member.
+        const { data: sessao } = await getSupabase().auth.getSession();
+        const uid = sessao.session?.user?.id;
+        if (uid && equipe && !precisaReentrarPin) {
+          const st = await verificarParticipacao(uid).catch(() => "ausente" as const);
+          if (st === "membro") {
+            entrandoRef.current = false;
+            return;
+          }
+        }
         const salvo = ((await getMeta("meu_nome")) as string | undefined)?.trim();
         const nome = salvo && salvo.length >= 2 ? salvo : nomePadraoAparelho();
         await entrarNaNuvem(nome);
@@ -648,7 +678,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!pronto || temDados || iniciandoVazioRef.current) return;
     iniciandoVazioRef.current = true;
     void importarArquivo({
-      formato: "controle-de-vendas-backup", versao: 1, loja: "loja",
+      formato: "controle-de-vendas-backup", versao: 1, loja: LOJA_NUVEM_ID,
       configuracao: { nome_loja: NOME_LOJA_PADRAO },
       vendas: [], produtos: [], entregas: [], encomendas: [], cobrancas: [], reabastecimentos: [],
     }).catch(() => { iniciandoVazioRef.current = false; });
@@ -737,6 +767,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const enviandoRef = useRef(false);
   const reenviarRef = useRef(false);
+  const enviarAgoraRef = useRef<() => void>(() => undefined);
   const aplicarContagemPendentes = (pend: Awaited<ReturnType<typeof listarPendentes>>) => {
     setPendentesCount(pend.length);
     setPendentesVendas(pend.filter((p) => p.colecao === "vendas").length);
@@ -757,6 +788,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (!user) {
           try { user = await usuarioAtual(); } catch { user = null; }
         }
+        const membroPronto = await esperarSessaoEMembro(8_000);
+        if (membroPronto) user = membroPronto;
         if (!user) return;
         try {
           const eq = await estadoEquipeLocal();
@@ -798,6 +831,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, [usuario, conferirParticipacao, pedirReingresso]);
+  enviarAgoraRef.current = enviarAgora;
 
   useEffect(() => {
     aoHaverPendente(() => { enviarAgora(); });
@@ -957,8 +991,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     return next;
   }, [vendas]);
 
-  const statusNuvem = estadoStatusNuvem({ online, enviando: syncando || pendentesCount > 0 });
-  const textoStatusNuvem = rotuloStatusNuvem({ online, enviando: syncando, vendasAguardando: pendentesVendas });
+  const membroProntoStatus = Boolean(usuario && equipe && !precisaReentrarPin && !bloqueado);
+  const statusNuvem = estadoStatusNuvem({ online, enviando: syncando || pendentesCount > 0, canalInscrito, membro: membroProntoStatus });
+  const textoStatusNuvem = rotuloStatusNuvem({ online, enviando: syncando, vendasAguardando: pendentesVendas, canalInscrito, membro: membroProntoStatus });
 
 
   const value = useMemo<Store>(() => ({

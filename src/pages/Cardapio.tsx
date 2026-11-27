@@ -38,13 +38,14 @@ export function Cardapio() {
   }, [produtos, buscaDeb]);
 
   function abrir(id: string | "novo") {
+    trava.soltar();
     if (id === "novo") {
       setEdit("novo"); setNome(""); setPreco(""); setUnidade("kg"); setPromo(""); setInicia(""); setExpira(""); setCodigos([]); setCodigoNovo(""); setErroCodigo("");
       return;
     }
     const p = produtos.find((x) => x.id === id);
     if (!p) return;
-    setEdit(id); setNome(p.nome); setPreco(String(p.preco).replace(".", ",")); setUnidade(p.unidade ?? "");
+    setEdit(id); setNome(p.nome); setPreco(Number(p.preco).toFixed(2).replace(".", ",")); setUnidade(p.unidade ?? "");
     setPromo(p.preco_promocional != null ? String(p.preco_promocional).replace(".", ",") : "");
     setInicia(p.promo_inicia_em ? p.promo_inicia_em.slice(0, 16) : "");
     setExpira(p.promo_expira_em ? p.promo_expira_em.slice(0, 16) : "");
@@ -54,12 +55,18 @@ export function Cardapio() {
   function parseN(s: string) { return Number(s.replace(/\./g, "").replace(",", ".")) || 0; }
 
   async function salvar() {
-    const nomeEl = document.querySelector<HTMLInputElement>('[data-testid="produto-nome"]');
-    const precoEl = document.querySelector<HTMLInputElement>('[data-testid="produto-preco"]');
-    const nomeV = (nomeEl?.value ?? nomeRef.current?.value ?? nome).trim();
-    const precoV = precoEl?.value ?? precoRef.current?.value ?? preco;
-    if (!nomeV || !edit) return;
-    if (!trava.comecar()) return;
+    const nomeEl = nomeRef.current ?? document.querySelector<HTMLInputElement>('[data-testid="produto-nome"]');
+    const precoEl = precoRef.current ?? document.querySelector<HTMLInputElement>('[data-testid="produto-preco"]');
+    const nomeV = (nomeEl?.value ?? nome).trim();
+    const precoV = precoEl?.value ?? preco;
+    if (!nomeV || !edit) {
+      console.error("salvar produto abortado", { nomeV, edit, precoV });
+      return;
+    }
+    if (!trava.comecar()) {
+      console.error("salvar produto travado");
+      return;
+    }
     try {
     const id = edit === "novo" ? gerarId() : edit;
     const atual = produtos.find((p) => p.id === id);
@@ -112,12 +119,12 @@ export function Cardapio() {
         ))}
       </div>
       {edit && (
-        <div className="dialog-bg" onClick={() => setEdit(null)}>
+        <div className="dialog-bg" role="presentation">
           <div className="dialog" onClick={(e) => e.stopPropagation()}>
             <h3>{edit === "novo" ? "Novo produto" : "Editar produto"}</h3>
             <form className="col" style={{ marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
-              <label className="field">Nome<input className="input" data-testid="produto-nome" ref={nomeRef} defaultValue={nome} /></label>
-              <label className="field">Preço<input className="input num" data-testid="produto-preco" ref={precoRef} defaultValue={preco} /></label>
+              <label className="field">Nome<input className="input" data-testid="produto-nome" ref={nomeRef} defaultValue={nome} onChange={(e) => setNome(e.target.value)} /></label>
+              <label className="field">Preço<input className="input num" data-testid="produto-preco" ref={precoRef} defaultValue={preco} onChange={(e) => setPreco(e.target.value)} /></label>
               <label className="field">Unidade<input className="input" value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="kg, un, bandeja..." /></label>
               <div className="field">
                 <span>Código de barras</span>
@@ -169,13 +176,15 @@ export function Cardapio() {
               <label className="field">Preço promocional<input className="input num" value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="opcional" /></label>
               <label className="field">Início da promo<input className="input" type="datetime-local" value={inicia} onChange={(e) => setInicia(e.target.value)} /></label>
               <label className="field">Fim da promo<input className="input" type="datetime-local" value={expira} onChange={(e) => setExpira(e.target.value)} /></label>
-              <div className="row">
-                {edit !== "novo" && <button type="button" className="btn btn-danger" data-testid="produto-excluir" onClick={async () => {
-                  const ok = await confirmar({ titulo: "Excluir produto?", descricao: nome, confirmar: "Excluir", destrutivo: true });
-                  if (ok && typeof edit === "string") { await excluirProduto(edit); setEdit(null); }
-                }}>Excluir</button>}
-                <button type="button" className="btn grow" onClick={() => setEdit(null)}>Cancelar</button>
-                <button type="submit" className="btn btn-primary grow" data-testid="produto-salvar" disabled={trava.ocupado}>Salvar</button>
+              <div className="col dialog-acoes">
+                <button type="button" className="btn btn-primary" data-testid="produto-salvar" onClick={() => void salvar()}>{trava.ocupado ? "Salvando..." : "Salvar"}</button>
+                <div className="row">
+                  {edit !== "novo" && <button type="button" className="btn btn-danger" data-testid="produto-excluir" onClick={async () => {
+                    const ok = await confirmar({ titulo: "Excluir produto?", descricao: nome, confirmar: "Excluir", destrutivo: true });
+                    if (ok && typeof edit === "string") { await excluirProduto(edit); setEdit(null); }
+                  }}>Excluir</button>}
+                  <button type="button" className="btn grow" onClick={() => setEdit(null)}>Cancelar</button>
+                </div>
               </div>
             </form>
           </div>

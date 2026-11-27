@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient, type User as SbUser } from "@supabase/supabase-js";
 import type { SupabaseWebConfig } from "./types";
 import { SUPABASE_CONFIG_PADRAO } from "./supabasePadrao";
+import { authStorage } from "./authStorage";
 
 export type NuvemUser = {
   uid: string;
@@ -38,6 +39,8 @@ export function iniciarSupabase(cfg: SupabaseWebConfig): SupabaseClient {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
+      storage: authStorage,
+      flowType: "implicit",
     },
     realtime: {
       params: { eventsPerSecond: 10 },

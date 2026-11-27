@@ -1,4 +1,5 @@
 import { getSupabase, userDe, type NuvemUser } from "./supabase";
+import { obterIdAparelho } from "./authStorage";
 import { LOJA_NUVEM_ID } from "./supabasePadrao";
 import { agoraIso } from "./datas";
 import { setMeta, upsertMembro } from "./db";
@@ -31,6 +32,13 @@ function msgRpc(e: { message?: string } | null | undefined, fallback: string): s
 
 async function garantirAuth(): Promise<NuvemUser> {
   const sb = getSupabase();
+  // Prefer the persisted session so a reload or a flaky getUser() does not
+  // create a new anonymous user (which broke upserts of this device's sales).
+  const { data: sessao } = await sb.auth.getSession();
+  if (sessao.session?.user) {
+    const u = userDe(sessao.session.user);
+    if (u) return u;
+  }
   const { data: atual } = await sb.auth.getUser();
   if (atual.user) {
     const u = userDe(atual.user);
@@ -47,6 +55,26 @@ async function garantirAuth(): Promise<NuvemUser> {
   const u = userDe(data.user);
   if (!u) throw new Error("Não foi possível entrar na nuvem.");
   return u;
+}
+
+export async function esperarSessaoEMembro(timeoutMs = 8_000): Promise<NuvemUser | null> {
+  const sb = getSupabase();
+  const inicio = Date.now();
+  while (Date.now() - inicio < timeoutMs) {
+    const { data: sessao } = await sb.auth.getSession();
+    const u = userDe(sessao.session?.user ?? null);
+    if (u) {
+      try {
+        const st = await verificarParticipacao(u.uid);
+        if (st === "membro") return u;
+        if (st === "bloqueado") return null;
+      } catch {
+        // still joining
+      }
+    }
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return null;
 }
 
 async function gravarNomeAuth(nome: string): Promise<void> {
@@ -108,7 +136,8 @@ export async function entrarComNome(nomeBruto: string): Promise<EstadoEquipe & {
   const user = await garantirAuth();
   await gravarNomeAuth(nome);
   const sb = getSupabase();
-  const { data, error } = await sb.rpc("entrar_na_loja", { p_nome: nome, p_loja: LOJA_NUVEM_ID });
+  const aparelhoId = await obterIdAparelho();
+  const { data, error } = await sb.rpc("entrar_na_loja", { p_nome: nome, p_loja: LOJA_NUVEM_ID, p_aparelho_id: aparelhoId });
   if (error) throw new Error(msgRpc(error, "Não foi possível entrar na loja."));
   const row = (data ?? {}) as Record<string, unknown>;
   const estado = estadoDeRpc(row, nome, user.uid);

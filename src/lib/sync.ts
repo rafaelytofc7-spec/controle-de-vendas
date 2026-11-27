@@ -161,7 +161,13 @@ async function upsertLinhas(tabela: string, rows: Record<string, unknown>[], onC
   for (let i = 0; i < rows.length; i += LOTE) {
     const fatia = rows.slice(i, i + LOTE);
     const { error } = await sb.from(tabela).upsert(fatia, { onConflict });
-    if (error) throw error;
+    if (!error) continue;
+    // A single rejected row used to fail the whole batch (and block new sales).
+    if (fatia.length === 1) throw error;
+    for (const row of fatia) {
+      const { error: um } = await sb.from(tabela).upsert(row, { onConflict });
+      if (um) throw um;
+    }
   }
 }
 
@@ -252,6 +258,10 @@ async function puxarColecao(loja: string, colecao: string, desde?: string): Prom
       q = q.gt("atualizado_em", desde).order("atualizado_em", { ascending: true });
     } else if (colecao === "atividades") {
       q = q.order("em", { ascending: true });
+    } else if (colecao === "membros") {
+      q = q.order("uid", { ascending: true });
+    } else if (colecao === "codigos_barras") {
+      q = q.order("codigo", { ascending: true });
     } else {
       q = q.order("id", { ascending: true });
     }
@@ -383,7 +393,7 @@ export async function enviarPendentes(loja: string, ehDono: boolean): Promise<{ 
   const gravarUm = async (p: (typeof pendentes)[number]): Promise<"enviado" | "recusado" | "ignorado"> => {
     try {
       if (p.colecao === "configuracao") {
-        if (!(ehDono && cfg)) return "ignorado";
+        if (!cfg) return "ignorado";
         await enviarLinha(loja, "configuracao", cfg as unknown as Record<string, unknown>);
         await limparPendente(p.id);
         return "enviado";
@@ -425,7 +435,7 @@ export async function enviarPendentes(loja: string, ehDono: boolean): Promise<{ 
 
   for (const p of pendentes) {
     if (p.colecao === "configuracao") {
-      if (ehDono && cfg) {
+      if (cfg) {
         lote.push(p);
         loteRows.push({ colecao: "configuracao", row: configToRow(cfg, loja) });
       }
@@ -554,7 +564,7 @@ export async function mesclarLocalNaNuvem(
       porCol.set(col, arr);
     }
   };
-  if (cfg && admin) porCol.set("configuracao", [configToRow(cfg, loja)]);
+  if (cfg) porCol.set("configuracao", [configToRow(cfg, loja)]);
   acum("vendas", vendas);
   acum("produtos", produtos);
   acum("entregas", entregas);

@@ -1,10 +1,10 @@
-export const GUIA_FIREBASE = `Antes de usar a versão 1.9.2 (nuvem no Supabase, entrada automática)
+export const GUIA_FIREBASE = `Antes de usar a versão 2.0.0 (nuvem no Supabase, entrada automática)
 1. O aplicativo já entra no projeto oficial da nuvem. Não é preciso colar chave nem arquivo de configuração.
 2. No painel do Supabase (Authentication → Providers), o login anônimo precisa estar ligado. Sem isso, o aparelho não conecta à loja.
 3. O histórico oficial já está na nuvem. Todos os aparelhos que entram com um nome passam a ver as mesmas vendas, produtos e encomendas.
 
 Primeiro uso e outros aparelhos
-4. Instale o APK 1.9.2 (ou abra o site atualizado). Se este aparelho ainda não tiver os dados, eles descem da nuvem sozinhos.
+4. Instale o APK 2.0.0 (ou abra o site atualizado). Se este aparelho ainda não tiver os dados, eles descem da nuvem sozinhos.
 5. Confirme que o aparelho está online nesta primeira entrada.
 6. Escreva o seu nome e toque em Entrar. Se a loja já existe, você entra como membro. O Admin (Rafael) reivindica o papel com “Tenho um código de recuperação” e o próprio nome. Anote o código de 8 caracteres e guarde fora do telefone.
 7. Nos outros aparelhos, cada pessoa escreve só o próprio nome na tela de entrada. Todos passam a usar o mesmo banco. Não é preciso PIN.
