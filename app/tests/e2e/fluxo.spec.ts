@@ -177,6 +177,67 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   await expect(pc.getByTestId("alerta-sync")).toContainText(/atrasado 7 min · 2 faltando/, { timeout: 20_000 });
   await cel.evaluate(() => (window as any).__cv3.sinalTeste({ pendentes: 0, atraso_seg: 0, faltando_servidor: 0, faltando_aparelho: 0, em_dia: true }));
   await expect(pc.getByTestId("alerta-sync").filter({ hasText: "atrasado 7 min" })).toHaveCount(0, { timeout: 20_000 });
+
+  // ---- encomendas: PC cria com sinal, celular (Caixa) vê em tempo real e entrega → vira venda ----
+  await pc.getByTestId("menu-encomendas").click();
+  await pc.getByTestId("nova-encomenda").click();
+  await pc.getByTestId("ef-cliente").fill(`Cliente ${tag}`);
+  await pc.getByTestId("ef-descricao").fill("cesta média");
+  await pc.getByTestId("ef-busca").fill(tag);
+  await pc.getByTestId("ef-produto").first().click();
+  await pc.getByTestId("ef-valor").fill("30");
+  await pc.getByTestId("ef-sinal").fill("10");
+  await pc.getByTestId("ef-salvar").click();
+  await expect(pc.getByTestId("toast")).toContainText("sinal de R$ 10,00");
+  await cel.getByTestId("nav-mais").click();
+  await cel.getByTestId("mais-encomendas").click();
+  const encCel = cel.getByTestId("encomenda").filter({ hasText: `Cliente ${tag}` });
+  await expect(encCel).toBeVisible({ timeout: 20_000 });
+  await encCel.getByTestId("avancar-encomenda").click(); // separando
+  await encCel.getByTestId("entregar-encomenda").click();
+  await cel.getByTestId("confirmar-entrega").click();
+  await expect(cel.getByTestId("toast")).toContainText("venda de R$ 20,00");
+  await sync(cel);
+  await pc.getByRole("button", { name: "Concluídas" }).click();
+  await expect(pc.getByTestId("encomenda").filter({ hasText: `Cliente ${tag}` })).toContainText("Entregue", { timeout: 20_000 });
+
+  // ---- preços por fornecedor: gráfico e comparação ----
+  await pc.getByTestId("menu-precos").click();
+  await pc.getByTestId("busca-precos").fill(tag);
+  await pc.getByTestId("produto-precos").first().click();
+  await expect(pc.getByTestId("grafico-precos").locator("svg")).toBeVisible();
+  await expect(pc.getByTestId("comparacao-fornecedores")).toContainText(`Fornecedor ${tag}`);
+  await expect(pc.getByTestId("comparacao-fornecedores")).toContainText("2,22");
+
+  // ---- promoções: sugestão para o produto com estoque alto, aplica, celular vende pelo preço da promoção ----
+  await pc.getByTestId("menu-promocoes").click();
+  await pc.getByTestId("atualizar-sugestoes").click();
+  const sug = pc.getByTestId("sugestao").filter({ hasText: `Banana ${tag}` });
+  await expect(sug).toBeVisible({ timeout: 20_000 });
+  await expect(sug).toContainText("de R$ 6,49 por R$ 5,49");
+  await sug.getByTestId("aplicar-sugestao").click();
+  await expect(pc.getByTestId("promo-ativa").filter({ hasText: `Banana ${tag}` })).toBeVisible();
+  await sync(pc);
+  await cel.getByTestId("nav-produtos").click();
+  await cel.getByTestId("busca-produtos").fill(tag);
+  await expect(cel.getByTestId("produto").filter({ hasText: `Banana ${tag}` })).toContainText("promoção", { timeout: 20_000 });
+  await cel.getByTestId("nav-caixa").click();
+  await cel.locator("body").click({ position: { x: 5, y: 300 } });
+  await cel.keyboard.type(codigoBarras, { delay: 5 });
+  await cel.keyboard.press("Enter");
+  await expect(cel.getByTestId("total")).toHaveText(/5,49/, { timeout: 20_000 });
+  await cel.getByTestId("registrar").click();
+  await sync(cel);
+
+  // ---- relatório do dia e painel ----
+  await pc.getByTestId("menu-relatorios").click();
+  await pc.getByTestId("relatorio-hoje").click();
+  await expect(pc.getByTestId("relatorio")).toContainText("Vendas", { timeout: 20_000 });
+  await expect(pc.getByTestId("relatorio")).toContainText(`Ana ${tag}`);
+  await pc.getByTestId("menu-painel").click();
+  await expect(pc.getByTestId("painel")).toBeVisible();
+  await expect(pc.getByTestId("kpi-total")).not.toHaveText("R$ 0,00");
+  await expect(pc.getByTestId("painel")).toContainText(`Ana ${tag}`);
 });
 
 test("atualização obrigatória bloqueia o app", async ({ browser }) => {

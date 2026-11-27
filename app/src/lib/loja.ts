@@ -208,6 +208,8 @@ export async function checarVersao(): Promise<void> {
 }
 
 export async function carregar(): Promise<void> {
+  // o que mudar no aparelho (tempo real ou ação local) enquanto baixa não pode ser apagado pela foto antiga do servidor
+  const antes = estado;
   const [produtos, codigos, custos, fornecedores, aparelhos, configs] = await Promise.all([
     buscarTudo<Produto>("v3_produtos"), buscarTudo<Codigo>("v3_produto_codigos"), buscarTudo<Custo>("v3_produto_custos"),
     buscarTudo<Fornecedor>("v3_fornecedores"), buscarTudo<Aparelho>("v3_aparelhos"), buscarTudo<Configuracao>("v3_configuracao"),
@@ -236,7 +238,7 @@ export async function carregar(): Promise<void> {
   const pendVendas = Object.values(estado.vendas).filter((v) => v.pendente);
   const pendEntradas = Object.values(estado.entradas).filter((v) => v.pendente);
   const me = aparelhos.find((a) => a.uid === estado.uid);
-  set({
+  const novo: Partial<Estado> = {
     produtos: porChave(produtos, (p) => p.id), codigos: porChave(codigos, (c) => c.codigo), custos: porChave(custos, (c) => c.produto_id),
     fornecedores: porChave(fornecedores, (f) => f.id), aparelhos: porChave(aparelhos, (a) => a.uid), config: configs[0] ?? null,
     vendas: { ...porChave(vendas, (v) => v.id), ...porChave(pendVendas, (v) => v.id) },
@@ -248,7 +250,15 @@ export async function carregar(): Promise<void> {
     precosDiarios: porChave(precosDiarios, chavePreco), promocoes: porChave(promocoes, chavePromo), relatorios: porChave(relatorios, (r) => r.dia),
     papel: me?.papel ?? estado.papel, meuNome: me?.nome ?? estado.meuNome,
     ultimaSync: new Date().toISOString(), ultimoErro: null,
-  });
+  };
+  for (const campo of ["produtos", "codigos", "custos", "fornecedores", "aparelhos", "vendas", "itens", "entradas", "entradaItens",
+    "encomendas", "encItens", "precosDiarios", "promocoes", "relatorios"] as const) {
+    const a = antes[campo] as Record<string, unknown>, c = estado[campo] as Record<string, unknown>, n = novo[campo] as Record<string, unknown>;
+    if (a === c) continue;
+    for (const k of Object.keys(c)) if (c[k] !== a[k]) n[k] = c[k];
+  }
+  if (estado.config !== antes.config && estado.config) novo.config = estado.config;
+  set(novo);
   // reaplica as operações ainda não enviadas por cima dos dados do servidor
   for (const op of estado.fila) if (!op.erro && op.tipo !== "venda" && op.tipo !== "entrada" && op.tipo !== "encomenda") aplicarLocal(op, false);
 }
