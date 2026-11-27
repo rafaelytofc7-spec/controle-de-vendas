@@ -190,3 +190,8 @@ Tudo dentro da loja `principal`. Todas as tabelas têm `id` (gerado no aparelho)
 - Cópia contínua: pg_cron `v3-sync-vendas-principal` (a cada 10 min) lê `public.vendas` (onde a rotina grava) e copia para a v3.
 - `caixa_automatico` ligado na principal (trava de 30/hora). Banca 1.0.0 (40100) publicado; versão mínima 0.
 - Teste: painel web de ensaio em https://rafaelytofc7-spec.github.io/banca-app/teste/
+
+## Banca 1.1.0 — Calendário de vendas (27/11, t775u + t776u)
+- Função `v3_vendas_por_dia` (v3_13): soma e quantidade por dia (São Paulo, só ativas); qualquer aparelho da loja pode ler, como as vendas.
+- Tela: mês (grade), semanas (dom–sáb), ano, lista de vendas do dia, médias (ticket e faturamento por dia/semana/mês) e soma total desde o início.
+- Conferido contra o banco: total geral, ano, 3 meses, 3 semanas e 4 dias (iguais ao centavo); teste de integração compara todos os dias da loja de ensaio.
