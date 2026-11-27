@@ -170,3 +170,9 @@ Tudo dentro da loja `principal`. Todas as tabelas têm `id` (gerado no aparelho)
 - Correção: `carregar()` não sobrescreve mudanças locais/tempo real feitas durante o download.
 - Backup privado: `scripts/backup-agora.sh` (idempotente, sem login interativo) roda pela rotina horária.
 - Nada ao vivo: caixa, migração para `principal` e chave anon antiga aguardam o OK do Rafael.
+
+## 3.0.0-teste.5 (27/11)
+- Decisão do Rafael (12:04): quem tem o APK entra sozinho como Caixa (sem QR/código); QR/recuperação só para virar Admin.
+- Servidor: `v3_loja_segredos.caixa_automatico` (ligado em teste/ensaio; **principal desligado até a virada**), só `p_plataforma='android'`, trava de 30 entradas automáticas/hora.
+- RLS: `v3_precos_diarios`, `v3_promocoes_sugeridas`, `v3_atividades`, `v3_cobrancas` só Admin lê. Caixa cria produto novo sempre com preço 0.
+- Próximo: app novo em Flutter (pasta `flutter/` / repo novo), mesma base Supabase.
