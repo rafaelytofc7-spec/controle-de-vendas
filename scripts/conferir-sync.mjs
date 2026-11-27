@@ -1,11 +1,11 @@
 // Conferência no box: servidor (v3) × backup no GitHub (repo privado) × app antigo.
-// Uso: node scripts/conferir-sync.mjs [loja]   (padrão: ensaio; depois da virada: principal)
+// Uso: node scripts/conferir-sync.mjs [loja]   (padrão: principal, a loja real do Banca; "ensaio" = teste)
 // Só lê. Sai com código 1 se achar diferença.
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-const LOJA = process.argv[2] || "ensaio";
+const LOJA = process.argv[2] || "principal";
 const S = "/home/box/.secrets/controle-vendas";
 const CLONE = "/workspace/cv3-dados";
 const REPO = "rafaelytofc7-spec/controle-de-vendas-dados";

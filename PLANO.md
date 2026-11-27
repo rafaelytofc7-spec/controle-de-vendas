@@ -182,3 +182,11 @@ Tudo dentro da loja `principal`. Todas as tabelas têm `id` (gerado no aparelho)
 - 1.0.0-teste.1 (40001): APK na release v1.0.0-teste.1, painel web em https://rafaelytofc7-spec.github.io/banca-app/ (loja de teste "ensaio").
 - Versões: linhas `banca-android`/`banca-web`/`banca-windows` em v3_app_versao (atual 40001, mínima 0).
 - Windows: `ci/windows.yml` pronto, aguardando permissão `workflow` do gh.
+
+## Virada para o Banca 1.0.0 — 27/11 (OK do Rafael 14:56, t773u)
+- Backup antes: schema `backup_20261127_virada` no banco + `backups/2026-11-27-virada/` no repo privado de dados.
+- Migração `v3_12b`: loja `principal` (antigo) → loja `principal` (v3), idempotente (id `leg-…` + legado_id). Contagens e total das vendas ativas iguais, 97 dias conferidos.
+- Membros do app antigo só como histórico (`v3_membros_legado`, só Admin lê); não viram aparelhos.
+- Cópia contínua: pg_cron `v3-sync-vendas-principal` (a cada 10 min) lê `public.vendas` (onde a rotina grava) e copia para a v3.
+- `caixa_automatico` ligado na principal (trava de 30/hora). Banca 1.0.0 (40100) publicado; versão mínima 0.
+- Teste: painel web de ensaio em https://rafaelytofc7-spec.github.io/banca-app/teste/
