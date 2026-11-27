@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="116" fill="#3F2A78"/>
+  <!-- toldo da banca -->
+  <path d="M96 150 h320 l-16 70 H112z" fill="#FFFFFF"/>
+  <g fill="#FF7A45">
+    <path d="M96 150 h64 l-8 70 h-40z"/><path d="M224 150 h64 l0 70 h-64z"/><path d="M352 150 h64 l-16 70 h-40z"/>
+  </g>
+  <g fill="#FFFFFF"><circle cx="132" cy="220" r="20"/><circle cx="196" cy="220" r="20"/><circle cx="256" cy="220" r="20"/><circle cx="316" cy="220" r="20"/><circle cx="380" cy="220" r="20"/></g>
+  <g fill="#FF7A45"><circle cx="132" cy="220" r="20"/><circle cx="256" cy="220" r="20"/><circle cx="380" cy="220" r="20"/></g>
+  <!-- balcão -->
+  <rect x="122" y="286" width="268" height="122" rx="26" fill="#B8E04A"/>
+  <path d="M190 350 l38 34 l84 -82" fill="none" stroke="#3F2A78" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

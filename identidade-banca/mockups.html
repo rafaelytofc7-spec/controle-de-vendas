@@ -1,0 +1,109 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--pri:#3F2A78;--pri2:#5B43A8;--onpri:#fff;--tan:#FF7A45;--lima:#B8E04A;--sup:#FAF7FF;--sup2:#F0EAFB;--sup3:#E4DBF7;--tinta:#1C1530;--sub:#6B6283;--ok:#2E9E5B;--alerta:#E8A317;--erro:#D64545}
+*{box-sizing:border-box}body{margin:0;background:#E9E4F3;font-family:Inter,sans-serif;color:var(--tinta)}
+.quadro{display:flex;gap:40px;padding:48px;align-items:flex-start;flex-wrap:wrap;width:1900px}
+h1,h2,h3,.num{font-family:Outfit,sans-serif}
+.cel{width:390px;height:844px;border-radius:44px;background:var(--sup);overflow:hidden;position:relative;box-shadow:0 30px 60px #3F2A7833;border:10px solid #1C1530}
+.top{background:var(--pri);color:#fff;padding:22px 20px 18px;border-radius:0 0 28px 28px}
+.top .l1{display:flex;justify-content:space-between;align-items:center}
+.top h2{margin:0;font-size:26px;font-weight:700}
+.chip{font-size:12px;padding:6px 10px;border-radius:999px;background:#ffffff22;display:inline-flex;gap:6px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--lima)}
+.sub{font-size:13px;opacity:.85;margin-top:6px}
+.visor{margin:16px;background:var(--tinta);color:#fff;border-radius:24px;padding:18px 20px}
+.visor .v{font-size:46px;font-weight:800;letter-spacing:-1px}.visor small{opacity:.7}
+.item{display:flex;justify-content:space-between;font-size:14px;padding:6px 0;border-bottom:1px dashed #ffffff22}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 16px}
+.k{height:54px;border-radius:16px;background:#fff;display:flex;align-items:center;justify-content:center;font:600 22px Outfit;box-shadow:0 1px 0 var(--sup3)}
+.acoes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 16px}
+.bt{border-radius:16px;padding:14px;font:600 15px Outfit;text-align:center}
+.bt.t{background:var(--sup3);color:var(--pri)}.bt.p{background:var(--tan);color:#fff;font-size:18px;padding:18px}.bt.l{background:var(--lima);color:var(--tinta)}
+.formas{display:flex;gap:8px;margin:12px 16px}.formas div{flex:1;text-align:center;padding:10px;border-radius:999px;border:1.5px solid var(--sup3);font-size:14px;font-weight:600}
+.formas .on{background:var(--pri);color:#fff;border-color:var(--pri)}
+.nav{position:absolute;bottom:0;left:0;right:0;height:78px;background:#fff;display:flex;justify-content:space-around;align-items:center;border-top:1px solid var(--sup3)}
+.nav div{font-size:12px;text-align:center;color:var(--sub)}.nav .on{color:var(--pri);font-weight:700}
+.nav .ic{width:56px;height:30px;border-radius:999px;margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:18px}.nav .on .ic{background:var(--sup3)}
+.card{background:#fff;border-radius:20px;padding:14px 16px;margin:10px 16px;box-shadow:0 1px 0 var(--sup3)}
+.lucro{display:flex;justify-content:space-between;align-items:center}
+.tag{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px}
+.tag.lima{background:#B8E04A55;color:#3d5a00}.tag.tan{background:#FF7A4522;color:#B4441B}
+.alerta{margin:10px 16px;background:#FFF3D6;border:1.5px solid var(--alerta);border-radius:18px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.alerta b{display:block}
+.pc{width:1280px;height:800px;border-radius:18px;background:var(--sup);overflow:hidden;display:flex;box-shadow:0 30px 60px #3F2A7833;border:1px solid var(--sup3)}
+.lado{width:240px;background:var(--pri);color:#fff;padding:24px 16px}
+.lado .m{padding:11px 14px;border-radius:14px;margin:4px 0;font-size:15px;opacity:.85}.lado .m.on{background:#ffffff1f;opacity:1;font-weight:600}
+.marca{display:flex;align-items:center;gap:10px;font:800 24px Outfit;margin-bottom:26px}
+.cont{flex:1;padding:28px 32px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+.kpi{background:#fff;border-radius:20px;padding:18px}.kpi .t{font-size:13px;color:var(--sub)}.kpi .v{font:800 30px Outfit;margin-top:4px}.kpi .d{font-size:12px;margin-top:4px}
+.g2{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-top:16px}
+.amostra{width:520px}
+.cor{display:flex;gap:10px;margin:10px 0}.cor div{width:90px;height:90px;border-radius:20px;display:flex;align-items:flex-end;padding:8px;font-size:11px;font-weight:600}
+</style></head><body><div class="quadro">
+
+<!-- folha de identidade -->
+<div class="amostra">
+  <div style="display:flex;align-items:center;gap:18px"><img src="logo.svg" width="120"><div><div style="font:800 64px Outfit;color:var(--pri);line-height:1">Banca</div><div style="font-size:16px;color:var(--sub)">vendas, estoque e caixa — offline primeiro</div></div></div>
+  <h3 style="margin-top:34px">Cores</h3>
+  <div class="cor"><div style="background:#3F2A78;color:#fff">Berinjela<br>#3F2A78</div><div style="background:#FF7A45;color:#fff">Tangerina<br>#FF7A45</div><div style="background:#B8E04A">Lima<br>#B8E04A</div><div style="background:#1C1530;color:#fff">Tinta<br>#1C1530</div><div style="background:#FAF7FF;border:1px solid #ddd">Fundo<br>#FAF7FF</div></div>
+  <h3>Tipografia</h3>
+  <div style="font:800 40px Outfit">R$ 1.977,08</div>
+  <div style="font:600 22px Outfit">Outfit — títulos e números</div>
+  <div style="font:400 16px Inter;color:var(--sub)">Inter — textos, listas e formulários. Material 3, cantos bem arredondados, botões grandes para o balcão.</div>
+  <h3 style="margin-top:28px">Ícone no celular</h3>
+  <div style="display:flex;gap:22px;align-items:end"><img src="logo.svg" width="96" style="border-radius:24px"><img src="logo.svg" width="64"><img src="logo.svg" width="40"></div>
+</div>
+
+<!-- caixa -->
+<div class="cel">
+  <div class="top"><div class="l1"><h2>Caixa</h2><span class="chip"><span class="dot"></span>Sincronizado</span></div><div class="sub">👤 Ana · hoje 42 vendas · R$ 1.064,50</div></div>
+  <div class="visor"><small>Total da venda</small><div class="v num">R$ 23,47</div>
+    <div class="item"><span>Banana prata · 1,250 kg</span><span>R$ 8,74</span></div>
+    <div class="item"><span>Tomate italiano · 0,870 kg</span><span>R$ 7,74</span></div>
+    <div class="item" style="border:0"><span>Alface crespa · 1 un</span><span>R$ 6,99</span></div></div>
+  <div class="acoes"><div class="bt t">📷 Ler código</div><div class="bt t">🔎 Produto</div></div>
+  <div class="g3"><div class="k">1</div><div class="k">2</div><div class="k">3</div><div class="k">4</div><div class="k">5</div><div class="k">6</div><div class="k">7</div><div class="k">8</div><div class="k">9</div></div>
+  <div class="formas"><div>Dinheiro</div><div class="on">Pix</div><div>Cartão</div></div>
+  <div style="margin:0 16px"><div class="bt p">Registrar venda · R$ 23,47</div></div>
+  <div class="nav"><div class="on"><div class="ic">🧾</div>Caixa</div><div><div class="ic">🥬</div>Produtos</div><div><div class="ic">📦</div>Chegou</div><div><div class="ic">📋</div>Encomendas</div><div><div class="ic">⋯</div>Mais</div></div>
+</div>
+
+<!-- chegou + alerta -->
+<div class="cel">
+  <div class="top"><div class="l1"><h2>Chegou mercadoria</h2><span class="chip" style="background:#E8A31733"><span class="dot" style="background:var(--alerta)"></span>3 na fila</span></div><div class="sub">Caixa registra · preço só o Admin define</div></div>
+  <div class="alerta"><div><b>Sincronização atrasada 4 min</b>3 vendas faltando no servidor</div><div class="bt l" style="padding:8px 12px">Reenviar</div></div>
+  <div class="card"><div style="font:600 18px Outfit">🍅 Tomate italiano</div><div style="color:var(--sub);font-size:13px">estoque 12,4 kg · fornecedor Ceasa</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+      <div style="background:var(--sup2);border-radius:14px;padding:10px"><small style="color:var(--sub)">Quantidade</small><div class="num" style="font:700 22px Outfit">20 kg</div></div>
+      <div style="background:var(--sup2);border-radius:14px;padding:10px"><small style="color:var(--sub)">Valor pago</small><div class="num" style="font:700 22px Outfit">R$ 96,00</div></div></div>
+    <div style="margin-top:10px;font-size:13px">Perda estimada <b>5%</b> · custo efetivo <b>R$ 5,05/kg</b></div></div>
+  <div class="card lucro"><div><div style="font-size:13px;color:var(--sub)">Lucro de hoje</div><div style="font:800 28px Outfit;color:var(--ok)">≈ R$ 397,96</div></div><span class="tag lima">margem 37%</span></div>
+  <div class="card"><div style="display:flex;justify-content:space-between"><b>Encomendas de amanhã</b><span class="tag tan">2</span></div><div style="margin-top:6px">Dona Lúcia · cesta de frutas · sinal R$ 20,00</div><div style="font-size:12px;color:var(--sub)">entrega até 10h</div></div>
+  <div style="margin:12px 16px"><div class="bt p">Salvar entrada</div></div>
+  <div class="nav"><div><div class="ic">🧾</div>Caixa</div><div><div class="ic">🥬</div>Produtos</div><div class="on"><div class="ic">📦</div>Chegou</div><div><div class="ic">📋</div>Encomendas</div><div><div class="ic">⋯</div>Mais</div></div>
+</div>
+
+<!-- PC -->
+<div class="pc">
+  <div class="lado"><div class="marca"><img src="logo.svg" width="38">Banca</div>
+    <div class="m on">📊 Painel</div><div class="m">🧾 Caixa</div><div class="m">🥬 Produtos</div><div class="m">📦 Chegou mercadoria</div><div class="m">📋 Encomendas</div><div class="m">🏷️ Promoções</div><div class="m">📈 Preços por fornecedor</div><div class="m">🗓️ Relatórios</div><div class="m">🚚 Fornecedores</div><div class="m">⚙️ Ajustes</div></div>
+  <div class="cont">
+    <div style="display:flex;justify-content:space-between;align-items:center"><h1 style="margin:0;font-size:30px">Painel de hoje</h1><span class="chip" style="background:#fff;color:var(--tinta)"><span class="dot" style="background:var(--ok)"></span>3 aparelhos em dia · Windows</span></div>
+    <div class="kpis" style="margin-top:20px">
+      <div class="kpi"><div class="t">Vendas</div><div class="v">88</div><div class="d" style="color:var(--ok)">▲ 12% vs. semana passada</div></div>
+      <div class="kpi"><div class="t">Total</div><div class="v">R$ 1.977,08</div><div class="d">ticket médio R$ 22,47</div></div>
+      <div class="kpi"><div class="t">Lucro estimado</div><div class="v" style="color:var(--ok)">R$ 712,40</div><div class="d">margem 36%</div></div>
+      <div class="kpi"><div class="t">Encomendas amanhã</div><div class="v">5</div><div class="d" style="color:var(--erro)">1 atrasada</div></div></div>
+    <div class="g2">
+      <div class="kpi"><div class="t">Vendas por hora</div>
+        <svg viewBox="0 0 600 220" width="100%" height="240"><g fill="#3F2A78">
+        <rect x="10" y="170" width="34" height="40" rx="8"/><rect x="58" y="140" width="34" height="70" rx="8"/><rect x="106" y="90" width="34" height="120" rx="8"/><rect x="154" y="60" width="34" height="150" rx="8" fill="#FF7A45"/><rect x="202" y="100" width="34" height="110" rx="8"/><rect x="250" y="130" width="34" height="80" rx="8"/><rect x="298" y="150" width="34" height="60" rx="8"/><rect x="346" y="120" width="34" height="90" rx="8"/><rect x="394" y="80" width="34" height="130" rx="8"/><rect x="442" y="70" width="34" height="140" rx="8"/><rect x="490" y="120" width="34" height="90" rx="8"/><rect x="538" y="170" width="34" height="40" rx="8"/></g></svg></div>
+      <div class="kpi"><div class="t">Custo do tomate por fornecedor (30 dias)</div>
+        <svg viewBox="0 0 360 220" width="100%" height="240"><polyline fill="none" stroke="#3F2A78" stroke-width="4" points="0,150 50,140 100,120 150,130 200,100 250,90 300,110 360,80"/><polyline fill="none" stroke="#FF7A45" stroke-width="4" points="0,170 50,160 100,165 150,140 200,150 250,120 300,125 360,115"/></svg>
+        <div style="font-size:13px"><span style="color:var(--pri)">■</span> Ceasa &nbsp; <span style="color:var(--tan)">■</span> Sítio Boa Vista</div></div>
+    </div>
+  </div>
+</div>
+</div></body></html>
