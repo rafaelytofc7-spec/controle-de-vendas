@@ -1,0 +1,324 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Protótipo v3 — Minha loja</title>
+<style>
+@font-face{font-family:Nunito;font-weight:400;src:url(nunito-latin-400-normal.woff2)}
+@font-face{font-family:Nunito;font-weight:700;src:url(nunito-latin-700-normal.woff2)}
+@font-face{font-family:Nunito;font-weight:800;src:url(nunito-latin-800-normal.woff2)}
+:root{--creme:#F7F4EC;--creme2:#EFE9DA;--papel:#FFFDF8;--linha:#DDD5C2;--folha:#1E7A4D;--folha2:#17633E;--folha3:#0F4A2D;--folhac:#E3F0E6;--lima:#8FBF3F;--limac:#EEF6DF;--ouro:#E8B70C;--ouroc:#FFF4C2;--tomate:#E25B45;--tomatec:#FBE6E2;--carvao:#1C1917;--cinza:#57524B;--ambar:#B7791F;--ambarc:#FCF1DC;--sombra:0 1px 0 rgba(28,25,23,.06),0 2px 8px rgba(28,25,23,.06)}
+@media(min-width:800px){.exemplo{left:auto!important;right:12px;bottom:12px!important}}
+*{box-sizing:border-box}body{margin:0;font-family:Nunito,system-ui,sans-serif;background:var(--creme);color:var(--carvao)}
+.tela{display:none}.tela.ativa{display:block}
+.exemplo{position:fixed;z-index:50;left:10px;bottom:76px;background:var(--ouro);color:#3a2e00;font-weight:800;font-size:12px;padding:4px 10px;border-radius:999px;letter-spacing:.04em;box-shadow:var(--sombra)}
+/* ---------- celular ---------- */
+.cel{width:390px;height:844px;overflow:hidden;position:relative;background:var(--creme);display:flex;flex-direction:column}
+.topo{background:var(--folha);color:#fff;padding:14px 16px 12px}
+.topo .l1{display:flex;justify-content:space-between;align-items:center}
+.topo h1{font-size:20px;margin:0;font-weight:800}
+.sync{font-size:12px;background:rgba(255,255,255,.16);padding:4px 10px;border-radius:999px;display:flex;gap:6px;align-items:center}
+.ponto{width:8px;height:8px;border-radius:50%;background:#9be37a;display:inline-block}
+.topo .sub{font-size:13px;opacity:.85;margin-top:4px}
+.corpo{flex:1;overflow:hidden;padding:12px 14px}
+.nav{height:68px;background:var(--papel);border-top:1px solid var(--linha);display:grid;grid-template-columns:repeat(5,1fr);font-size:11px;font-weight:700;color:var(--cinza)}
+.nav div{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}.nav div.on{color:var(--folha)}
+.nav i{font-style:normal;font-size:20px}
+.card{background:var(--papel);border:1px solid var(--linha);border-radius:14px;padding:12px;box-shadow:var(--sombra);margin-bottom:10px}
+.visor{background:var(--folha3);color:#fff;border-radius:16px;padding:14px 16px;margin-bottom:10px}
+.visor .r{font-size:13px;opacity:.8}.visor .v{font-size:40px;font-weight:800;letter-spacing:-.02em}
+.itens .it{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--linha);font-size:14px}
+.itens .it b{font-weight:800}.itens .it small{color:var(--cinza)}
+.btn{border:0;border-radius:12px;padding:12px 14px;font:inherit;font-weight:800;font-size:15px;cursor:pointer}
+.b-folha{background:var(--folha);color:#fff}.b-claro{background:var(--folhac);color:var(--folha3)}.b-ouro{background:var(--ouro);color:#3a2e00}.b-tomate{background:var(--tomatec);color:#9b2a1a}
+.linha2{display:grid;grid-template-columns:1fr 1fr;gap:8px}.linha3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tecl{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 0}
+.tecl div{background:var(--papel);border:1px solid var(--linha);border-radius:10px;text-align:center;padding:9px 0;font-size:20px;font-weight:800}
+.chip{display:inline-block;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:800;background:var(--creme2);color:var(--cinza);margin:0 4px 4px 0}
+.chip.on{background:var(--folha);color:#fff}.chip.ok{background:var(--folhac);color:var(--folha3)}.chip.al{background:var(--ambarc);color:#7a4c0a}.chip.rd{background:var(--tomatec);color:#9b2a1a}
+.busca{background:var(--papel);border:1px solid var(--linha);border-radius:12px;padding:11px 12px;display:flex;gap:8px;align-items:center;color:var(--cinza);font-size:15px;margin-bottom:10px}
+.prod{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--linha)}
+.ic{width:40px;height:40px;border-radius:12px;background:var(--limac);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.prod .n{flex:1}.prod .n b{display:block;font-size:15px}.prod .n small{color:var(--cinza);font-size:12px}
+.prod .p{text-align:right;font-weight:800}.prod .p small{display:block;font-weight:700;font-size:11px}
+.campo{margin-bottom:9px}.campo label{display:block;font-size:12px;font-weight:800;color:var(--cinza);margin-bottom:3px}
+.inp{background:var(--papel);border:1px solid var(--linha);border-radius:10px;padding:10px 12px;font-size:16px;font-weight:700}
+.slider{height:8px;border-radius:9px;background:linear-gradient(90deg,var(--folha) 0 40%,var(--creme2) 40%);position:relative;margin:14px 2px 6px}
+.slider::after{content:"";position:absolute;left:40%;top:-7px;width:22px;height:22px;border-radius:50%;background:#fff;border:3px solid var(--folha);transform:translateX(-50%)}
+.res{background:var(--folhac);border-radius:12px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center}
+.res .big{font-size:26px;font-weight:800;color:var(--folha3)}
+h2{font-size:17px;margin:4px 0 8px}h3{font-size:14px;margin:0 0 6px;color:var(--cinza);text-transform:uppercase;letter-spacing:.05em}
+.fab{position:absolute;right:16px;bottom:84px;background:var(--folha);color:#fff;border-radius:16px;padding:14px 18px;font-weight:800;box-shadow:0 6px 18px rgba(30,122,77,.35)}
+.motivo{font-size:12px;color:var(--cinza);margin-top:2px}
+/* ---------- bloqueio ---------- */
+.bloq{width:390px;height:844px;background:var(--folha3);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px}
+.bloq .bx{font-size:64px}.bloq h1{font-size:26px;margin:12px 0 6px}.bloq p{opacity:.85;line-height:1.45}
+/* ---------- PC ---------- */
+.pc{width:1440px;height:900px;display:grid;grid-template-columns:232px 1fr;overflow:hidden}
+.side{background:var(--folha3);color:#d8f0e2;padding:18px 12px;display:flex;flex-direction:column}
+.side .marca{font-weight:800;font-size:19px;color:#fff;padding:4px 10px 18px}
+.side .marca small{display:block;font-size:12px;opacity:.7;font-weight:700}
+.side a{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;font-weight:700;font-size:14.5px;color:#d8f0e2;text-decoration:none;margin-bottom:2px}
+.side a.on{background:rgba(255,255,255,.12);color:#fff}
+.side .rod{margin-top:auto;font-size:12px;padding:10px;background:rgba(255,255,255,.07);border-radius:10px;line-height:1.5}
+.main{padding:20px 26px;overflow:hidden}
+.cab{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.cab h1{margin:0;font-size:26px}.cab .s{color:var(--cinza);font-size:14px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px}
+.kpi{background:var(--papel);border:1px solid var(--linha);border-radius:14px;padding:14px;box-shadow:var(--sombra)}
+.kpi .t{font-size:12px;font-weight:800;color:var(--cinza);text-transform:uppercase;letter-spacing:.05em}.kpi .v{font-size:26px;font-weight:800;margin-top:4px}.kpi .d{font-size:12.5px;font-weight:700;margin-top:2px}
+.up{color:var(--folha)}.dn{color:var(--tomate)}
+.g2{display:grid;grid-template-columns:1.6fr 1fr;gap:14px}.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.g11{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;font-size:11.5px;text-transform:uppercase;color:var(--cinza);letter-spacing:.05em;padding:7px 8px;border-bottom:1px solid var(--linha)}
+td{padding:8px;border-bottom:1px solid var(--creme2)}td.n{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.feed div{display:flex;justify-content:space-between;font-size:13.5px;padding:6px 0;border-bottom:1px dashed var(--linha)}
+.feed small{color:var(--cinza)}
+.leg{display:flex;gap:14px;font-size:12.5px;font-weight:700;color:var(--cinza)}.leg span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;background:var(--c)}
+.melhor{background:var(--folhac);font-weight:800}
+</style></head><body>
+<div class="exemplo">DADOS DE EXEMPLO</div>
+
+<!-- ===== CELULAR: CAIXA ===== -->
+<section class="tela" id="cel-caixa"><div class="cel">
+ <div class="topo"><div class="l1"><h1>Caixa</h1><span class="sync"><span class="ponto"></span>Online, sincronizado</span></div><div class="sub">Minha loja · Caixa 2 · hoje 34 vendas · R$ 812,40</div></div>
+ <div class="corpo">
+  <div class="visor"><div class="r">Total da venda</div><div class="v">R$ 23,85</div><div class="r">3 itens · troco: —</div></div>
+  <div class="card itens">
+   <div class="it"><span><b>Tomate italiano</b> <small>1,250 kg × R$ 8,99</small></span><b>R$ 11,24</b></div>
+   <div class="it"><span><b>Banana prata</b> <small>1,100 kg × R$ 6,49</small></span><b>R$ 7,14</b></div>
+   <div class="it" style="border:0"><span><b>Leite integral 1 L</b> <small>1 un · código 789…0012</small></span><b>R$ 5,47</b></div>
+  </div>
+  <div class="linha2" style="margin-bottom:8px"><button class="btn b-claro">📷 Ler código</button><button class="btn b-claro">🔎 Buscar produto</button></div>
+  <div style="font-size:12px;font-weight:800;color:var(--cinza)">OU DIGITE SÓ O VALOR (VENDA RÁPIDA)</div>
+  <div class="tecl"><div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div>,</div><div>0</div><div>⌫</div></div>
+  <div class="linha3" style="margin-bottom:8px"><span class="chip on" style="text-align:center">Dinheiro</span><span class="chip" style="text-align:center">Pix</span><span class="chip" style="text-align:center">Cartão</span></div>
+  <button class="btn b-folha" style="width:100%;font-size:18px;padding:15px">Registrar venda · R$ 23,85</button>
+ </div>
+ <div class="nav"><div class="on"><i>🧾</i>Caixa</div><div><i>🥬</i>Produtos</div><div><i>📦</i>Chegou</div><div><i>📋</i>Encomendas</div><div><i>⋯</i>Mais</div></div>
+</div></section>
+
+<!-- ===== CELULAR: PRODUTOS ===== -->
+<section class="tela" id="cel-produtos"><div class="cel">
+ <div class="topo"><div class="l1"><h1>Produtos</h1><span class="sync"><span class="ponto"></span>Online</span></div><div class="sub">57 produtos · 4 com estoque baixo</div></div>
+ <div class="corpo">
+  <div class="busca">🔎 Buscar por nome ou código… <span style="margin-left:auto">📷</span></div>
+  <div><span class="chip on">Todos</span><span class="chip">Por kg</span><span class="chip">Por unidade</span><span class="chip al">Estoque baixo</span><span class="chip rd">Vencendo</span></div>
+  <div class="card" style="padding:2px 12px">
+   <div class="prod"><div class="ic">🍅</div><div class="n"><b>Tomate italiano</b><small>kg · estoque 18,4 kg · custo R$ 5,20</small></div><div class="p">R$ 8,99<small class="up">margem 42%</small></div></div>
+   <div class="prod"><div class="ic">🍌</div><div class="n"><b>Banana prata</b><small>kg · estoque 32,0 kg · custo R$ 3,90</small></div><div class="p">R$ 6,49<small class="up">margem 40%</small></div></div>
+   <div class="prod"><div class="ic">🥬</div><div class="n"><b>Alface crespa</b><small>un · estoque 6 un · custo R$ 1,60</small></div><div class="p">R$ 3,50<small class="up">margem 54%</small></div></div>
+   <div class="prod"><div class="ic">🥔</div><div class="n"><b>Batata inglesa</b><small>kg · estoque 4,1 kg · <span style="color:var(--ambar);font-weight:800">baixo</span></small></div><div class="p">R$ 5,99<small class="up">margem 38%</small></div></div>
+   <div class="prod"><div class="ic">🧅</div><div class="n"><b>Cebola</b><small>kg · estoque 21,7 kg · custo R$ 3,10</small></div><div class="p">R$ 4,99<small class="dn">margem 18% ⚠</small></div></div>
+   <div class="prod"><div class="ic">🥭</div><div class="n"><b>Mamão formosa</b><small>kg · estoque 15,0 kg · <span style="color:var(--tomate);font-weight:800">vence em 2 dias</span></small></div><div class="p">R$ 5,49<small class="up">margem 45%</small></div></div>
+   <div class="prod" style="border:0"><div class="ic">🥛</div><div class="n"><b>Leite integral 1 L</b><small>un · estoque 24 un · código 789…0012</small></div><div class="p">R$ 5,47<small class="up">margem 22%</small></div></div>
+  </div>
+ </div>
+ <div class="fab">＋ Produto</div>
+ <div class="nav"><div><i>🧾</i>Caixa</div><div class="on"><i>🥬</i>Produtos</div><div><i>📦</i>Chegou</div><div><i>📋</i>Encomendas</div><div><i>⋯</i>Mais</div></div>
+</div></section>
+
+<!-- ===== CELULAR: CHEGOU (ENTRADA DE ESTOQUE) ===== -->
+<section class="tela" id="cel-chegou"><div class="cel">
+ <div class="topo"><div class="l1"><h1>Chegou mercadoria</h1><span class="sync"><span class="ponto"></span>Online</span></div><div class="sub">Registre o que chegou e o custo é recalculado</div></div>
+ <div class="corpo">
+  <div class="campo"><label>PRODUTO</label><div class="inp" style="display:flex;justify-content:space-between">🍅 Tomate italiano <span>📷</span></div></div>
+  <div class="campo"><label>FORNECEDOR</label><div class="inp" style="display:flex;justify-content:space-between">Fornecedor A (Ceasa) <span style="color:var(--cinza)">▾</span></div></div>
+  <div class="linha2"><div class="campo"><label>QUANTIDADE QUE CHEGOU</label><div class="inp">20,000 kg</div></div><div class="campo"><label>VALOR PAGO (TOTAL)</label><div class="inp">R$ 100,00</div></div></div>
+  <div class="linha2"><div class="campo"><label>PERDA ESTIMADA</label><div class="inp">8 %</div></div><div class="campo"><label>FRETE / OUTROS</label><div class="inp">R$ 4,00</div></div></div>
+  <div class="card">
+   <h3>Custo calculado</h3>
+   <div class="itens"><div class="it"><span>Custo por kg desta compra</span><b>R$ 5,00</b></div><div class="it"><span>Com perda 8% + frete</span><b>R$ 5,65</b></div><div class="it" style="border:0"><span>Custo médio do estoque (18,4 + 20 kg)</span><b>R$ 5,43</b></div></div>
+  </div>
+  <div class="card"><h3>Margem desejada: 40%</h3><div class="slider"></div>
+   <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--cinza);font-weight:700"><span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span></div>
+   <div class="res" style="margin-top:10px"><div><div style="font-size:12px;font-weight:800;color:var(--folha2)">PREÇO SUGERIDO</div><div class="big">R$ 9,05</div></div><div style="text-align:right;font-size:13px">atual R$ 8,99<br><b style="color:var(--ambar)">+ R$ 0,06</b></div></div>
+  </div>
+  <div class="linha2"><button class="btn b-claro">Manter R$ 8,99</button><button class="btn b-folha">Salvar e usar R$ 9,05</button></div>
+ </div>
+ <div class="nav"><div><i>🧾</i>Caixa</div><div><i>🥬</i>Produtos</div><div class="on"><i>📦</i>Chegou</div><div><i>📋</i>Encomendas</div><div><i>⋯</i>Mais</div></div>
+</div></section>
+
+<!-- ===== CELULAR: ENCOMENDAS ===== -->
+<section class="tela" id="cel-encomendas"><div class="cel">
+ <div class="topo"><div class="l1"><h1>Encomendas</h1><span class="sync"><span class="ponto"></span>Online</span></div><div class="sub">5 para hoje · 2 atrasadas · R$ 186,00 a receber</div></div>
+ <div class="corpo">
+  <div><span class="chip on">Hoje (5)</span><span class="chip">Amanhã (3)</span><span class="chip rd">Atrasadas (2)</span><span class="chip">Entregues</span></div>
+  <div class="card"><div style="display:flex;justify-content:space-between"><b>Cliente Exemplo 1</b><span class="chip rd">Atrasada</span></div>
+   <div class="motivo">Entrega · Rua Exemplo, 100 · ontem 17h</div>
+   <div class="itens" style="margin-top:6px"><div class="it"><span>Mamão formosa · 2 kg</span><b>R$ 10,98</b></div><div class="it" style="border:0"><span>Alface crespa · 3 un</span><b>R$ 10,50</b></div></div>
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><span class="chip al">Sinal R$ 10,00 · falta R$ 11,48</span><span style="font-weight:800">R$ 21,48</span></div></div>
+  <div class="card"><div style="display:flex;justify-content:space-between"><b>Cliente Exemplo 2</b><span class="chip al">Separando</span></div>
+   <div class="motivo">Retirada · hoje 11h00</div>
+   <div class="itens" style="margin-top:6px"><div class="it" style="border:0"><span>Cesta de frutas média</span><b>R$ 65,00</b></div></div>
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px"><span class="chip ok">Pago no Pix</span><span style="font-weight:800">R$ 65,00</span></div></div>
+  <div class="card"><div style="display:flex;justify-content:space-between"><b>Cliente Exemplo 3</b><span class="chip">Pendente</span></div>
+   <div class="motivo">Entrega · Bairro Exemplo · hoje 16h00</div>
+   <div class="itens" style="margin-top:6px"><div class="it" style="border:0"><span>Tomate italiano · 3 kg + 4 itens</span><b>R$ 99,52</b></div></div>
+   <div class="linha3" style="margin-top:8px"><button class="btn b-claro" style="padding:8px">WhatsApp</button><button class="btn b-claro" style="padding:8px">Separado</button><button class="btn b-folha" style="padding:8px">Entregue</button></div></div>
+ </div>
+ <div class="fab">＋ Encomenda</div>
+ <div class="nav"><div><i>🧾</i>Caixa</div><div><i>🥬</i>Produtos</div><div><i>📦</i>Chegou</div><div class="on"><i>📋</i>Encomendas</div><div><i>⋯</i>Mais</div></div>
+</div></section>
+
+<!-- ===== CELULAR: PROMOÇÕES ===== -->
+<section class="tela" id="cel-promocoes"><div class="cel">
+ <div class="topo"><div class="l1"><h1>Sugestões de promoção</h1><span class="sync"><span class="ponto"></span>Online</span></div><div class="sub">Atualizado hoje 06:00 · baseado em estoque, giro, validade e custo</div></div>
+ <div class="corpo">
+  <div class="card"><div style="display:flex;gap:10px"><div class="ic">🥭</div><div style="flex:1"><b>Mamão formosa</b><div class="motivo"><span class="chip rd">Vence em 2 dias</span><span class="chip al">15 kg parado</span></div></div></div>
+   <div class="res" style="margin-top:6px"><div>De <s>R$ 5,49</s> por <b style="font-size:20px;color:var(--folha3)">R$ 3,99</b></div><div style="font-size:12px;text-align:right">ainda acima do custo<br><b>margem 22%</b></div></div>
+   <div class="linha2" style="margin-top:8px"><button class="btn b-claro">Ignorar</button><button class="btn b-folha">Criar promoção 2 dias</button></div></div>
+  <div class="card"><div style="display:flex;gap:10px"><div class="ic">🍌</div><div style="flex:1"><b>Banana prata</b><div class="motivo"><span class="chip ok">Custo caiu 12%</span><span class="chip ok">Margem boa 40%</span></div></div></div>
+   <div class="res" style="margin-top:6px"><div>De <s>R$ 6,49</s> por <b style="font-size:20px;color:var(--folha3)">R$ 5,49</b></div><div style="font-size:12px;text-align:right">giro esperado +30%<br><b>margem 29%</b></div></div></div>
+  <div class="card"><div style="display:flex;gap:10px"><div class="ic">🧅</div><div style="flex:1"><b>Cebola</b><div class="motivo"><span class="chip al">Giro lento (9 dias)</span><span class="chip rd">Margem só 18%</span></div></div></div>
+   <div class="motivo" style="margin-top:6px">⚠ Não recomendo baixar o preço: margem já está baixa. Melhor trocar de fornecedor — o Fornecedor B está R$ 0,40/kg mais barato.</div></div>
+ </div>
+ <div class="nav"><div><i>🧾</i>Caixa</div><div><i>🥬</i>Produtos</div><div><i>📦</i>Chegou</div><div><i>📋</i>Encomendas</div><div class="on"><i>⋯</i>Mais</div></div>
+</div></section>
+
+<!-- ===== CELULAR: ATUALIZAÇÃO OBRIGATÓRIA ===== -->
+<section class="tela" id="cel-atualizar"><div class="bloq">
+ <div class="bx">⬆️</div><h1>Nova versão disponível</h1>
+ <p>Este aparelho está na versão <b>3.0.0</b>.<br>A loja passou a exigir a versão <b>3.1.0</b>.<br>Para não gravar dados errados, o app fica pausado até atualizar.</p>
+ <p style="font-size:14px">Suas vendas que ainda não subiram <b>estão guardadas</b> e serão enviadas depois da atualização.</p>
+ <button class="btn b-ouro" style="width:100%;font-size:18px;padding:16px;margin-top:10px">Baixar versão 3.1.0</button>
+ <p style="font-size:12px;margin-top:14px;opacity:.7">Novidades: relatório semanal, ajuste no leitor de código.</p>
+</div></section>
+
+<!-- ===== PC: DASHBOARD ===== -->
+<section class="tela" id="pc-painel"><div class="pc">
+ <div class="side" id="side1"></div>
+ <div class="main">
+  <div class="cab"><div><h1>Painel de hoje</h1><div class="s">Sexta, 27/11 · atualizado em tempo real · 3 aparelhos conectados</div></div><span class="sync" style="background:var(--folhac);color:var(--folha3);font-weight:800"><span class="ponto" style="background:var(--folha)"></span>Online, sincronizado</span></div>
+  <div class="kpis">
+   <div class="kpi"><div class="t">Vendido hoje</div><div class="v">R$ 1.284,50</div><div class="d up">▲ 12% vs. sexta passada</div></div>
+   <div class="kpi"><div class="t">Lucro estimado</div><div class="v">R$ 421,80</div><div class="d">margem média 33%</div></div>
+   <div class="kpi"><div class="t">Vendas</div><div class="v">58</div><div class="d">ticket médio R$ 22,15</div></div>
+   <div class="kpi"><div class="t">Encomendas</div><div class="v">5</div><div class="d dn">2 atrasadas</div></div>
+   <div class="kpi"><div class="t">Estoque baixo</div><div class="v">4</div><div class="d">batata, alface, ovos, limão</div></div>
+  </div>
+  <div class="g2">
+   <div class="card"><h3>Vendas por hora — hoje × média das sextas</h3>
+    <svg viewBox="0 0 760 240" width="100%" height="250">
+     <g stroke="#EFE9DA">${''}</g>
+     <g id="barras"></g>
+    </svg>
+    <div class="leg"><span style="--c:var(--folha)">Hoje</span><span style="--c:#c9d9a6">Média das sextas</span></div></div>
+   <div class="card"><h3>Agora nos aparelhos</h3><div class="feed">
+    <div><span>Caixa 2 · venda R$ 23,85</span><small>há 10 s</small></div>
+    <div><span>Caixa 1 · venda R$ 7,50</span><small>há 1 min</small></div>
+    <div><span>Admin (celular) · chegou 20 kg tomate</span><small>há 6 min</small></div>
+    <div><span>Caixa 1 · encomenda nova</span><small>há 14 min</small></div>
+    <div><span>Caixa 2 · venda R$ 41,20</span><small>há 15 min</small></div>
+    <div><span>Cópia automática · app antigo ok</span><small>há 22 min</small></div>
+    <div style="border:0"><span>Admin (PC) · preço banana → R$ 6,49</span><small>há 1 h</small></div></div></div>
+  </div>
+  <div class="g3" style="margin-top:14px">
+   <div class="card"><h3>Mais vendidos hoje</h3><table><tr><th>Produto</th><th style="text-align:right">Qtd</th><th style="text-align:right">R$</th></tr>
+    <tr><td>Banana prata</td><td class="n">14,2 kg</td><td class="n">92,16</td></tr><tr><td>Tomate italiano</td><td class="n">9,8 kg</td><td class="n">88,10</td></tr><tr><td>Alface crespa</td><td class="n">21 un</td><td class="n">73,50</td></tr></table></div>
+   <div class="card"><h3>Sugestões de promoção</h3><div class="feed"><div><span>🥭 Mamão — vence em 2 dias</span><b>R$ 3,99</b></div><div><span>🍌 Banana — custo caiu 12%</span><b>R$ 5,49</b></div><div style="border:0"><span>🥕 Cenoura — 12 kg parado</span><b>R$ 3,49</b></div></div></div>
+   <div class="card"><h3>Aparelhos</h3><div class="feed"><div><span>💻 PC do escritório</span><span class="chip ok">Admin · v3.0.0</span></div><div><span>📱 Celular do Rafael</span><span class="chip ok">Admin · v3.0.0</span></div><div style="border:0"><span>📱 Caixa 2</span><span class="chip">Caixa · v3.0.0</span></div></div></div>
+  </div>
+ </div></div></section>
+
+<!-- ===== PC: FORNECEDORES E PREÇOS ===== -->
+<section class="tela" id="pc-fornecedores"><div class="pc">
+ <div class="side" id="side2"></div>
+ <div class="main">
+  <div class="cab"><div><h1>Fornecedores e preços</h1><div class="s">Custo por kg pago a cada fornecedor, dia a dia</div></div><div><span class="chip on">Tomate italiano ▾</span><span class="chip">30 dias</span><span class="chip">Exportar CSV</span></div></div>
+  <div class="g2">
+   <div class="card"><h3>Custo do tomate italiano por fornecedor (R$/kg)</h3>
+    <svg id="graf" viewBox="0 0 800 300" width="100%" height="310"></svg>
+    <div class="leg"><span style="--c:#1E7A4D">Fornecedor A (Ceasa)</span><span style="--c:#E8B70C">Fornecedor B (produtor)</span><span style="--c:#E25B45">Fornecedor C (atacado)</span><span style="--c:#57524B">Preço de venda</span></div></div>
+   <div class="card"><h3>Hoje: onde comprar mais barato</h3><table>
+    <tr><th>Produto</th><th>Melhor</th><th style="text-align:right">R$/kg</th><th style="text-align:right">vs. 7d</th></tr>
+    <tr><td>Tomate italiano</td><td>Forn. B</td><td class="n">4,80</td><td class="n up">▼ 6%</td></tr>
+    <tr><td>Banana prata</td><td>Forn. A</td><td class="n">3,40</td><td class="n up">▼ 12%</td></tr>
+    <tr><td>Cebola</td><td>Forn. B</td><td class="n">2,70</td><td class="n">= 0%</td></tr>
+    <tr><td>Batata inglesa</td><td>Forn. C</td><td class="n">3,60</td><td class="n dn">▲ 9%</td></tr>
+    <tr><td>Mamão formosa</td><td>Forn. A</td><td class="n">2,90</td><td class="n up">▼ 3%</td></tr>
+    <tr><td>Alface crespa (un)</td><td>Forn. B</td><td class="n">1,50</td><td class="n dn">▲ 4%</td></tr></table></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Fornecedores</h3><table>
+   <tr><th>Fornecedor</th><th>Tipo</th><th>Contato</th><th style="text-align:right">Compras 30d</th><th style="text-align:right">Total 30d</th><th>Produtos</th><th>Última entrega</th></tr>
+   <tr><td><b>Fornecedor A (Ceasa)</b></td><td>Atacado</td><td>(00) 0000-0000</td><td class="n">14</td><td class="n">R$ 6.820,00</td><td>tomate, banana, mamão +18</td><td>hoje 06:10</td></tr>
+   <tr><td><b>Fornecedor B (produtor)</b></td><td>Produtor rural</td><td>(00) 0000-0000</td><td class="n">9</td><td class="n">R$ 2.410,00</td><td>alface, cebola, tomate +6</td><td>ontem</td></tr>
+   <tr><td><b>Fornecedor C (atacado)</b></td><td>Distribuidor</td><td>(00) 0000-0000</td><td class="n">4</td><td class="n">R$ 1.130,00</td><td>batata, ovos, leite</td><td>24/11</td></tr></table></div>
+ </div></div></section>
+
+<!-- ===== PC: RELATÓRIO ===== -->
+<section class="tela" id="pc-relatorio"><div class="pc">
+ <div class="side" id="side3"></div>
+ <div class="main">
+  <div class="cab"><div><h1>Relatório do dia — 26/11</h1><div class="s">Gerado automaticamente às 23:59 · também por semana e mês</div></div><div><span class="chip on">Dia</span><span class="chip">Semana</span><span class="chip">Mês</span><button class="btn b-claro" style="padding:8px 12px">⬇ PDF</button> <button class="btn b-claro" style="padding:8px 12px">⬇ Planilha</button> <button class="btn b-folha" style="padding:8px 12px">Enviar no WhatsApp</button></div></div>
+  <div class="kpis">
+   <div class="kpi"><div class="t">Faturamento</div><div class="v">R$ 1.977,08</div><div class="d">88 vendas</div></div>
+   <div class="kpi"><div class="t">Custo das mercadorias</div><div class="v">R$ 1.302,40</div><div class="d">pelo custo médio</div></div>
+   <div class="kpi"><div class="t">Lucro bruto</div><div class="v up">R$ 674,68</div><div class="d">margem 34,1%</div></div>
+   <div class="kpi"><div class="t">Perdas registradas</div><div class="v dn">R$ 38,20</div><div class="d">3,2 kg descartados</div></div>
+   <div class="kpi"><div class="t">Compras do dia</div><div class="v">R$ 912,00</div><div class="d">3 fornecedores</div></div>
+  </div>
+  <div class="g11">
+   <div class="card"><h3>Produtos — vendas e lucro</h3><table>
+    <tr><th>Produto</th><th style="text-align:right">Vendido</th><th style="text-align:right">Faturou</th><th style="text-align:right">Custo</th><th style="text-align:right">Lucro</th><th style="text-align:right">Margem</th></tr>
+    <tr><td>Banana prata</td><td class="n">31,5 kg</td><td class="n">204,44</td><td class="n">122,85</td><td class="n">81,59</td><td class="n">40%</td></tr>
+    <tr><td>Tomate italiano</td><td class="n">22,1 kg</td><td class="n">198,68</td><td class="n">120,22</td><td class="n">78,46</td><td class="n">39%</td></tr>
+    <tr><td>Alface crespa</td><td class="n">38 un</td><td class="n">133,00</td><td class="n">60,80</td><td class="n">72,20</td><td class="n">54%</td></tr>
+    <tr><td>Mamão formosa</td><td class="n">18,4 kg</td><td class="n">101,02</td><td class="n">55,57</td><td class="n">45,45</td><td class="n">45%</td></tr>
+    <tr><td>Cebola</td><td class="n">16,0 kg</td><td class="n">79,84</td><td class="n">65,47</td><td class="n">14,37</td><td class="n dn">18%</td></tr>
+    <tr><td>Vendas só com valor (sem itens)</td><td class="n">41 vendas</td><td class="n">612,30</td><td class="n">≈ 403,40</td><td class="n">≈ 208,90</td><td class="n">≈ 34%</td></tr></table></div>
+   <div>
+    <div class="card"><h3>Formas de pagamento</h3><table><tr><td>Dinheiro</td><td class="n">R$ 702,10</td></tr><tr><td>Pix</td><td class="n">R$ 868,48</td></tr><tr><td>Cartão</td><td class="n">R$ 406,50</td></tr></table></div>
+    <div class="card"><h3>Preços dos fornecedores hoje</h3><table><tr><td>Tomate</td><td>A R$ 5,00 · <b>B R$ 4,80</b> · C R$ 5,30</td></tr><tr><td>Banana</td><td><b>A R$ 3,40</b> · C R$ 3,75</td></tr><tr><td>Batata</td><td>A R$ 3,95 · <b>C R$ 3,60</b></td></tr></table></div>
+    <div class="card"><h3>Atenção</h3><div class="feed"><div><span>⚠ Cebola com margem 18% — preço sugerido R$ 5,49</span></div><div><span>📦 Batata acaba em ~1 dia no giro atual</span></div><div style="border:0"><span>📋 2 encomendas atrasadas</span></div></div></div>
+   </div>
+  </div>
+ </div></div></section>
+
+<!-- ===== PC: CADASTRO DE PRODUTO ===== -->
+<section class="tela" id="pc-produto"><div class="pc">
+ <div class="side" id="side4"></div>
+ <div class="main">
+  <div class="cab"><div><h1>Produto: Tomate italiano</h1><div class="s">Cadastro, estoque, custo e preço</div></div><div><button class="btn b-claro">Cancelar</button> <button class="btn b-folha">Salvar</button></div></div>
+  <div class="g11">
+   <div class="card"><h3>Cadastro</h3>
+    <div class="linha2"><div class="campo"><label>NOME</label><div class="inp">Tomate italiano</div></div><div class="campo"><label>CATEGORIA</label><div class="inp">Legumes ▾</div></div></div>
+    <div class="linha2"><div class="campo"><label>VENDIDO POR</label><div><span class="chip on">kg</span><span class="chip">unidade</span><span class="chip">bandeja</span><span class="chip">maço</span></div></div><div class="campo"><label>CÓDIGOS DE BARRAS (leitor USB ou câmera)</label><div class="inp" style="display:flex;justify-content:space-between">2000123 · 789000000001 <span>＋</span></div></div></div>
+    <div class="linha3"><div class="campo"><label>ESTOQUE ATUAL</label><div class="inp">38,4 kg</div></div><div class="campo"><label>AVISAR ABAIXO DE</label><div class="inp">8 kg</div></div><div class="campo"><label>VALIDADE MÉDIA</label><div class="inp">5 dias</div></div></div>
+    <div class="linha2"><div class="campo"><label>FORNECEDOR PRINCIPAL</label><div class="inp">Fornecedor A (Ceasa) ▾</div></div><div class="campo"><label>PERDA PADRÃO</label><div class="inp">8 %</div></div></div>
+    <h3 style="margin-top:10px">Últimas entradas</h3><table>
+     <tr><th>Data</th><th>Fornecedor</th><th style="text-align:right">Chegou</th><th style="text-align:right">Pago</th><th style="text-align:right">R$/kg</th></tr>
+     <tr><td>27/11 06:10</td><td>Fornecedor A</td><td class="n">20,0 kg</td><td class="n">100,00</td><td class="n">5,00</td></tr>
+     <tr><td>25/11 07:00</td><td>Fornecedor B</td><td class="n">15,0 kg</td><td class="n">72,00</td><td class="n">4,80</td></tr>
+     <tr><td>23/11 06:30</td><td>Fornecedor A</td><td class="n">25,0 kg</td><td class="n">130,00</td><td class="n">5,20</td></tr></table></div>
+   <div class="card"><h3>Calculadora de custo e preço</h3>
+    <div class="linha3"><div class="campo"><label>BASE DO CUSTO</label><div><span class="chip on">Custo médio</span><span class="chip">Última compra</span></div></div><div class="campo"><label>CUSTO BASE</label><div class="inp">R$ 5,02 /kg</div></div><div class="campo"><label>+ PERDA 8% + FRETE</label><div class="inp">R$ 5,56 /kg</div></div></div>
+    <div class="campo" style="margin-top:6px"><label>MARGEM DE LUCRO DESEJADA — 40%</label><div class="slider" style="background:linear-gradient(90deg,var(--folha) 0 40%,var(--creme2) 40%)"></div><div><span class="chip">25%</span><span class="chip">30%</span><span class="chip">35%</span><span class="chip on">40%</span><span class="chip">50%</span></div></div>
+    <div class="res" style="margin:10px 0"><div><div style="font-size:12px;font-weight:800;color:var(--folha2)">PREÇO SUGERIDO</div><div class="big" style="font-size:34px">R$ 9,27 /kg</div><div style="font-size:12.5px">arredondado: <b>R$ 9,29</b> · margem sobre venda</div></div><div style="text-align:right;font-size:14px">preço atual <b>R$ 8,99</b><br>margem atual <b>38,2%</b><br>lucro por kg <b>R$ 3,43</b></div></div>
+    <table><tr><th>Margem</th><th style="text-align:right">Preço</th><th style="text-align:right">Lucro/kg</th><th style="text-align:right">Lucro no estoque</th></tr>
+     <tr><td>30%</td><td class="n">7,94</td><td class="n">2,38</td><td class="n">91,39</td></tr>
+     <tr><td>35%</td><td class="n">8,55</td><td class="n">2,99</td><td class="n">114,82</td></tr>
+     <tr class="melhor"><td>40%</td><td class="n">9,27</td><td class="n">3,71</td><td class="n">142,46</td></tr>
+     <tr><td>50%</td><td class="n">11,12</td><td class="n">5,56</td><td class="n">213,50</td></tr></table>
+    <div class="motivo" style="margin-top:8px">Margem calculada sobre o preço de venda: preço = custo ÷ (1 − margem). Dá para trocar para “markup sobre o custo” em Ajustes.</div>
+   </div>
+  </div>
+ </div></div></section>
+
+<script>
+const menu=[["📊","Painel"],["🧾","Vendas"],["🥬","Produtos"],["📦","Estoque e entradas"],["🚚","Fornecedores e preços"],["📋","Encomendas"],["🏷️","Promoções"],["📑","Relatórios"],["👥","Aparelhos e equipe"],["⚙️","Ajustes"]];
+const ativo={side1:"Painel",side2:"Fornecedores e preços",side3:"Relatórios",side4:"Produtos"};
+for(const id in ativo){document.getElementById(id).innerHTML='<div class="marca">Minha loja<small>Controle de Vendas v3 · Admin</small></div>'+menu.map(([i,n])=>`<a class="${n===ativo[id]?'on':''}">${i} ${n}</a>`).join('')+'<div class="rod">💻 PC do escritório · Admin<br>🟢 Online · 3 aparelhos<br>Cópia do app antigo: 09:00 ok</div>';}
+// barras vendas por hora
+(function(){const h=[7,8,9,10,11,12,13,14,15,16,17,18,19],hoje=[60,145,190,170,120,80,70,95,110,140,90,0,0],med=[55,120,160,150,130,90,75,85,105,150,170,140,60];let s='';const W=760,H=210,bw=22,max=200;
+for(let y=0;y<=4;y++){const yy=10+y*H/4;s+=`<line x1="30" x2="${W}" y1="${yy}" y2="${yy}" stroke="#EFE9DA"/><text x="0" y="${yy+4}" font-size="11" fill="#57524B">${200-y*50}</text>`}
+h.forEach((hh,i)=>{const x=40+i*55;const a=hoje[i]/max*H,b=med[i]/max*H;s+=`<rect x="${x}" y="${10+H-b}" width="${bw}" height="${b}" rx="4" fill="#c9d9a6"/><rect x="${x+bw+2}" y="${10+H-a}" width="${bw}" height="${a}" rx="4" fill="#1E7A4D"/><text x="${x+bw}" y="236" font-size="11" text-anchor="middle" fill="#57524B">${hh}h</text>`});
+document.getElementById('barras').innerHTML=s})();
+// linhas fornecedores
+(function(){const g=document.getElementById('graf');const n=30,W=800,H=250,x0=40;const min=3.5,max=10;const y=v=>10+H-(v-min)/(max-min)*H;
+function serie(base,amp,seed){const a=[];for(let i=0;i<n;i++)a.push(+(base+amp*Math.sin(i/4+seed)+((i*7+seed*13)%5-2)*0.06).toFixed(2));return a}
+const A=serie(5.1,.35,1),B=serie(4.85,.3,2.3),C=serie(5.4,.25,4),V=Array.from({length:n},(_,i)=>i<12?8.49:i<22?8.79:8.99);
+let s='';for(let v=4;v<=10;v+=1){s+=`<line x1="${x0}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="#EFE9DA"/><text x="4" y="${y(v)+4}" font-size="11" fill="#57524B">${v},00</text>`}
+const pts=a=>a.map((v,i)=>`${x0+i*(W-x0)/(n-1)},${y(v)}`).join(' ');
+[[A,'#1E7A4D'],[B,'#E8B70C'],[C,'#E25B45']].forEach(([a,c])=>s+=`<polyline points="${pts(a)}" fill="none" stroke="${c}" stroke-width="3" stroke-linejoin="round"/>`);
+s+=`<polyline points="${pts(V)}" fill="none" stroke="#57524B" stroke-width="2" stroke-dasharray="6 5"/>`;
+['28/10','04/11','11/11','18/11','26/11'].forEach((d,i)=>s+=`<text x="${x0+i*(W-x0)/4}" y="285" font-size="11" fill="#57524B" text-anchor="${i==0?'start':i==4?'end':'middle'}">${d}</text>`);
+g.innerHTML=s})();
+const id=(location.hash||'#cel-caixa').slice(1);document.getElementById(id).classList.add('ativa');
+</script></body></html>

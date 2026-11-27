@@ -1,0 +1,9 @@
+# Using Gradle Wrapper
+/.gradle
+/local.properties
+/app/build
+/build
+/captures
+/.idea
+*.iml
+.DS_Store
