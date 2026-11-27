@@ -31,5 +31,17 @@ export interface Aparelho {
 export interface Configuracao { loja_id: string; margem_padrao: number; arredondamento: "nenhum" | "49_99" | "x9"; modo_margem: "venda" | "markup"; telefone: string | null }
 export interface AppVersao { plataforma: string; minima: number; atual: number; nome_atual: string | null; url: string | null; novidades: string | null }
 
-export type TipoOp = "venda" | "excluir_venda" | "entrada" | "produto" | "codigo" | "fornecedor" | "preco" | "contagem" | "perda" | "config";
+export type TipoOp = "venda" | "excluir_venda" | "entrada" | "produto" | "codigo" | "fornecedor" | "preco" | "contagem" | "perda" | "config"
+  | "encomenda" | "promocao" | "responder_promocao";
+export type StatusEncomenda = "pendente" | "separando" | "pronta" | "entregue" | "cancelada";
+export interface Encomenda {
+  loja_id: string; id: string; cliente: string | null; telefone: string | null; tipo: "retirada" | "entrega"; endereco: string | null;
+  data_entrega: string | null; descricao: string | null; status: StatusEncomenda; valor: number; sinal: number; pago: boolean;
+  forma_pagamento: string | null; pago_em: string | null; concluido_em: string | null; excluido: boolean; criado_em: string; atualizado_em: string;
+  pendente?: boolean;
+}
+export interface EncomendaItem { loja_id: string; id: string; encomenda_id: string; produto_id: string | null; nome: string; quantidade: number; preco_unit: number }
+export interface PrecoDiario { loja_id: string; dia: string; produto_id: string; fornecedor_id: string; quantidade: number; valor: number; custo_min: number | null; custo_max: number | null; preco_venda: number | null }
+export interface Promocao { loja_id: string; dia: string; produto_id: string; motivos: { tipo: string; texto: string }[]; preco_atual: number | null; preco_sugerido: number | null; margem_resultante: number | null; status: "nova" | "aceita" | "ignorada" }
+export interface Relatorio { loja_id: string; dia: string; dados: any; gerado_em: string }
 export interface Op { id: string; tipo: TipoOp; dados: Record<string, unknown>; criado_em: string; tentativas: number; erro?: string }

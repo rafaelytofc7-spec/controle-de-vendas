@@ -6,7 +6,7 @@ import { CODIGO_ENTRADA, LOJA, PLATAFORMA, VERSAO_CODE } from "./config";
 import { custoEfetivo, custoMedioNovo } from "./calc";
 import { diaSP, novoId } from "./util";
 import type {
-  Aparelho, AppVersao, Codigo, Configuracao, Custo, Entrada, EntradaItem, Fornecedor, Op, Papel, Produto, TipoOp, Venda, VendaItem,
+  Aparelho, AppVersao, Codigo, Configuracao, Custo, Encomenda, EncomendaItem, Entrada, EntradaItem, Fornecedor, Op, Papel, PrecoDiario, Produto, Promocao, Relatorio, TipoOp, Venda, VendaItem,
 } from "./tipos";
 
 export type Fase = "iniciando" | "precisa_codigo" | "pronto" | "bloqueado_versao" | "aparelho_bloqueado";
@@ -25,6 +25,11 @@ export interface Estado {
   entradas: Record<string, Entrada>;
   entradaItens: Record<string, EntradaItem>;
   aparelhos: Record<string, Aparelho>;
+  encomendas: Record<string, Encomenda>;
+  encItens: Record<string, EncomendaItem>;
+  precosDiarios: Record<string, PrecoDiario>;
+  promocoes: Record<string, Promocao>;
+  relatorios: Record<string, Relatorio>;
   config: Configuracao | null;
   versao: Record<string, AppVersao>;
   fila: Op[];
@@ -51,7 +56,7 @@ export interface Vigia {
 const vazio = (): Estado => ({
   fase: "iniciando", uid: null, papel: null, meuNome: "",
   produtos: {}, codigos: {}, custos: {}, fornecedores: {}, vendas: {}, itens: {}, entradas: {}, entradaItens: {},
-  aparelhos: {}, config: null, versao: {}, fila: [],
+  aparelhos: {}, encomendas: {}, encItens: {}, precosDiarios: {}, promocoes: {}, relatorios: {}, config: null, versao: {}, fila: [],
   online: typeof navigator === "undefined" ? true : navigator.onLine, tempoReal: false, enviando: false,
   ultimoErro: null, erroEntrada: null, ultimaSync: null,
   operador: typeof localStorage === "undefined" ? "" : localStorage.getItem("cv3-operador") || "",
@@ -214,6 +219,14 @@ export async function carregar(): Promise<void> {
     itens.push(...(await buscarTudo<VendaItem>("v3_venda_itens", (q) => q.in("venda_id", comItens.slice(i, i + 150)))));
   }
   const entradas = await buscarTudo<Entrada>("v3_entradas", (q) => q.gte("data", desde(90)));
+  const [encomendas, encItens, precosDiarios, promocoes, relatorios] = await Promise.all([
+    buscarTudo<Encomenda>("v3_encomendas", (q) => q.eq("excluido", false).or(`status.in.(pendente,separando,pronta),atualizado_em.gte.${desde(60)}`)),
+    buscarTudo<EncomendaItem>("v3_encomenda_itens"),
+    buscarTudo<PrecoDiario>("v3_precos_diarios", (q) => q.gte("dia", desde(180).slice(0, 10))),
+    buscarTudo<Promocao>("v3_promocoes_sugeridas", (q) => q.gte("dia", desde(14).slice(0, 10))),
+    buscarTudo<Relatorio>("v3_relatorios_diarios", (q) => q.gte("dia", desde(62).slice(0, 10))),
+  ]);
+  const pendEnc = Object.values(estado.encomendas).filter((e) => e.pendente);
   const entIds = entradas.map((e) => e.id);
   const entradaItens: EntradaItem[] = [];
   for (let i = 0; i < entIds.length; i += 150) {
@@ -230,11 +243,14 @@ export async function carregar(): Promise<void> {
     itens: { ...porChave(itens, (i) => i.id), ...porChave(Object.values(estado.itens).filter((i) => estado.vendas[i.venda_id]?.pendente), (i) => i.id) },
     entradas: { ...porChave(entradas, (e) => e.id), ...porChave(pendEntradas, (e) => e.id) },
     entradaItens: { ...porChave(entradaItens, (i) => i.id), ...porChave(Object.values(estado.entradaItens).filter((i) => estado.entradas[i.entrada_id]?.pendente), (i) => i.id) },
+    encomendas: { ...porChave(encomendas, (e) => e.id), ...porChave(pendEnc, (e) => e.id) },
+    encItens: { ...porChave(encItens, (i) => i.id), ...porChave(Object.values(estado.encItens).filter((i) => estado.encomendas[i.encomenda_id]?.pendente), (i) => i.id) },
+    precosDiarios: porChave(precosDiarios, chavePreco), promocoes: porChave(promocoes, chavePromo), relatorios: porChave(relatorios, (r) => r.dia),
     papel: me?.papel ?? estado.papel, meuNome: me?.nome ?? estado.meuNome,
     ultimaSync: new Date().toISOString(), ultimoErro: null,
   });
   // reaplica as operações ainda não enviadas por cima dos dados do servidor
-  for (const op of estado.fila) if (!op.erro && op.tipo !== "venda" && op.tipo !== "entrada") aplicarLocal(op, false);
+  for (const op of estado.fila) if (!op.erro && op.tipo !== "venda" && op.tipo !== "entrada" && op.tipo !== "encomenda") aplicarLocal(op, false);
 }
 
 // ---------- tempo real ----------
@@ -244,7 +260,11 @@ const TABELAS: [string, keyof Estado, (r: any) => string][] = [
   ["v3_produtos", "produtos", (r) => r.id], ["v3_produto_codigos", "codigos", (r) => r.codigo], ["v3_produto_custos", "custos", (r) => r.produto_id],
   ["v3_fornecedores", "fornecedores", (r) => r.id], ["v3_vendas", "vendas", (r) => r.id], ["v3_venda_itens", "itens", (r) => r.id],
   ["v3_entradas", "entradas", (r) => r.id], ["v3_entrada_itens", "entradaItens", (r) => r.id], ["v3_aparelhos", "aparelhos", (r) => r.uid],
+  ["v3_encomendas", "encomendas", (r) => r.id], ["v3_encomenda_itens", "encItens", (r) => r.id], ["v3_precos_diarios", "precosDiarios", (r) => chavePreco(r)],
+  ["v3_promocoes_sugeridas", "promocoes", (r) => chavePromo(r)], ["v3_relatorios_diarios", "relatorios", (r) => r.dia],
 ];
+const chavePreco = (r: { dia: string; produto_id: string; fornecedor_id: string }) => `${r.dia}|${r.produto_id}|${r.fornecedor_id}`;
+const chavePromo = (r: { dia: string; produto_id: string }) => `${r.dia}|${r.produto_id}`;
 
 async function assinar() {
   const s = supa();
@@ -329,6 +349,9 @@ async function executar(op: Op): Promise<void> {
     case "contagem": return rpc("v3_contagem", { p_loja: LOJA, p: d });
     case "perda": return rpc("v3_registrar_perda", { p_loja: LOJA, p_produto: d.produto_id, p_quantidade: d.quantidade, p_ref: d.id });
     case "config": return rpc("v3_salvar_configuracao", { p_loja: LOJA, p: d });
+    case "encomenda": return rpc("v3_salvar_encomenda", { p_loja: LOJA, p: d });
+    case "promocao": return rpc("v3_definir_promocao", { p_loja: LOJA, p_produto: d.produto_id, p_preco: d.preco ?? null, p_dias: d.dias ?? 3, p_dia_sugestao: d.dia_sugestao ?? null });
+    case "responder_promocao": return rpc("v3_responder_promocao", { p_loja: LOJA, p_dia: d.dia, p_produto: d.produto_id, p_status: d.status });
   }
 }
 
@@ -345,6 +368,7 @@ export async function enviarFila(): Promise<void> {
         await executar(op);
         if (op.tipo === "venda") marcarEnviada("vendas", op.dados.id as string);
         if (op.tipo === "entrada") marcarEnviada("entradas", op.dados.id as string);
+        if (op.tipo === "encomenda") marcarEnviada("encomendas", op.dados.id as string);
         set({ fila: estado.fila.filter((o) => o.id !== op.id), online: true, ultimoErro: null });
         await gravarFila();
       } catch (e) {
@@ -379,7 +403,7 @@ export function traduzirErro(m: string): string {
   return m.slice(0, 140);
 }
 
-function marcarEnviada(campo: "vendas" | "entradas", id: string) {
+function marcarEnviada(campo: "vendas" | "entradas" | "encomendas", id: string) {
   const atual = (estado[campo] as Record<string, any>)[id];
   if (atual?.pendente) set({ [campo]: { ...(estado[campo] as any), [id]: { ...atual, pendente: false } } } as any);
 }
@@ -468,6 +492,34 @@ function aplicarLocal(op: Op, novo: boolean) {
       break;
     }
     case "config": if (estado.config) set({ config: { ...estado.config, ...d } }); break;
+    case "encomenda": {
+      const atual = estado.encomendas[d.id];
+      const { itens, ...resto } = d;
+      const e: Encomenda = { ...(atual ?? { loja_id: LOJA, cliente: null, telefone: null, tipo: "retirada", endereco: null, data_entrega: null, descricao: null,
+        status: "pendente", valor: 0, sinal: 0, pago: false, forma_pagamento: null, pago_em: null, concluido_em: null, excluido: false, criado_em: d.criado_em ?? agora }),
+        ...resto, atualizado_em: agora, pendente: true } as Encomenda;
+      let encItens = estado.encItens;
+      if (Array.isArray(itens)) {
+        encItens = Object.fromEntries(Object.entries(estado.encItens).filter(([, i]) => i.encomenda_id !== d.id));
+        itens.forEach((it: any, i: number) => { const id = it.id ?? `${d.id}-${i + 1}`; encItens[id] = { loja_id: LOJA, id, encomenda_id: d.id, produto_id: it.produto_id ?? null, nome: it.nome, quantidade: it.quantidade, preco_unit: it.preco_unit ?? 0 }; });
+      }
+      set({ encomendas: { ...estado.encomendas, [d.id]: e }, encItens });
+      break;
+    }
+    case "promocao": {
+      const p = estado.produtos[d.produto_id];
+      if (p) {
+        const fim = d.preco == null ? null : new Date(Date.now() + (d.dias ?? 3) * 86400_000).toISOString();
+        set({ produtos: { ...estado.produtos, [p.id]: { ...p, preco_promocional: d.preco ?? null, promo_inicia_em: d.preco == null ? null : agora, promo_expira_em: fim } } });
+      }
+      if (d.dia_sugestao) { const k = `${d.dia_sugestao}|${d.produto_id}`; const pr = estado.promocoes[k]; if (pr) set({ promocoes: { ...estado.promocoes, [k]: { ...pr, status: "aceita" } } }); }
+      break;
+    }
+    case "responder_promocao": {
+      const k = `${d.dia}|${d.produto_id}`; const pr = estado.promocoes[k];
+      if (pr) set({ promocoes: { ...estado.promocoes, [k]: { ...pr, status: d.status } } });
+      break;
+    }
   }
 }
 
@@ -662,4 +714,12 @@ if (import.meta.env.VITE_E2E === "1" && typeof window !== "undefined") {
     sinalTeste: (x: Record<string, unknown>) => sinal(x),
     vigiar,
   };
+}
+
+/** Pede ao servidor o relatório do dia (Admin) — também atualiza as sugestões de promoção. */
+export async function relatorioAgora(dia?: string): Promise<Relatorio["dados"]> {
+  const { data, error } = await supa().rpc("v3_relatorio_agora", { p_loja: LOJA, p_dia: dia ?? null });
+  if (error) throw new Error(traduzirErro(msgErro(error)));
+  await carregar().catch(() => {});
+  return data;
 }
