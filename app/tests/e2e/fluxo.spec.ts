@@ -136,6 +136,7 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   await pc.getByTestId("menu-caixa").click();
   await pc.getByTestId("resumo-dia").click();
   await expect(pc.getByTestId("venda-hoje").filter({ hasText: "12,37" }).first()).toBeVisible({ timeout: 20_000 });
+  await pc.keyboard.press("Escape");
 
   // ---- vigia da sincronização ----
   // 1) alerta no celular: venda presa na fila há 3 min
@@ -164,9 +165,13 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   // 3) o PC "esquece" uma venda → Reenviar tudo baixa do servidor
   const id = await pc.evaluate(() => { const e = (window as any).__cv3.getEstado(); const v = Object.values(e.vendas as Record<string, any>).find((x) => x.total === 4.56); (window as any).__cv3.esquecerVenda(v.id); return v.id; });
   expect(id).toBeTruthy();
+  // (o botão "Reenviar tudo" também recarrega tudo; aqui testamos só o vigia, que precisa achar e baixar a venda sozinho)
+  for (let i = 0; i < 20 && await pc.evaluate(() => (window as any).__cv3.getEstado().vigia.rodando); i++) await pc.waitForTimeout(500);
+  const r = await pc.evaluate(() => (window as any).__cv3.vigiar(true));
+  expect(r.baixadas).toBe(1);
+  expect(await pc.evaluate((i) => !!(window as any).__cv3.getEstado().vendas[i], id)).toBe(true);
   await pc.getByTestId("menu-ajustes").click();
-  await pc.getByTestId("reenviar-tudo").click();
-  await expect(pc.getByTestId("toast")).toContainText(/1 baixada/, { timeout: 40_000 });
+  await expect(pc.getByTestId("card-sync")).toContainText("1 baixada");
   // 4) PC (Admin) mostra alerta quando outro aparelho informa atraso
   await cel.evaluate(() => (window as any).__cv3.sinalTeste({ pendentes: 2, atraso_seg: 420, faltando_servidor: 0, faltando_aparelho: 0 }));
   await expect(pc.getByTestId("alerta-sync")).toContainText(/atrasado 7 min · 2 faltando/, { timeout: 20_000 });

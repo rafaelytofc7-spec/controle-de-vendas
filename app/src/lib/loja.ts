@@ -660,5 +660,6 @@ if (import.meta.env.VITE_E2E === "1" && typeof window !== "undefined") {
     esquecerVenda: (id: string) => { const m = { ...estado.vendas }; delete m[id]; set({ vendas: m }); },
     envelhecerFila: (min: number) => set({ fila: estado.fila.map((o) => ({ ...o, criado_em: new Date(Date.parse(o.criado_em) - min * 60_000).toISOString() })) }),
     sinalTeste: (x: Record<string, unknown>) => sinal(x),
+    vigiar,
   };
 }
