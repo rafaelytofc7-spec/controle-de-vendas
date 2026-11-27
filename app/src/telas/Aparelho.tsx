@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { useLoja, criarConvite, definirAparelho, renomearAparelho, usarCodigo, enfileirar, descartarOp, tentarDeNovo } from "../lib/loja";
+import { useLoja, criarConvite, definirAparelho, renomearAparelho, usarCodigo, enfileirar, descartarOp, tentarDeNovo, reenviarTudo, atrasoSeg, getEstado } from "../lib/loja";
 import { Modal, toast } from "../comum";
 import { lerCodigoBarras } from "../lib/leitorCodigo";
 import { LOJA, PLATAFORMA, VERSAO_NOME } from "../lib/config";
@@ -33,6 +33,8 @@ export default function Aparelho() {
         <p className="peq-t mut" style={{ marginBottom: 0 }}>Papel: <b data-testid="papel">{admin ? "Admin" : "Caixa"}</b> · versão {VERSAO_NOME} ({PLATAFORMA}) · loja {LOJA}{ultimaSync ? ` · sincronizado ${dataHoraSP(ultimaSync)}` : ""}</p>
       </div>
 
+      <CardSync />
+
       {erros.length > 0 && (
         <div className="card"><h3>Envios com erro</h3>
           {erros.map((o) => (
@@ -62,7 +64,8 @@ export default function Aparelho() {
           <div className="card"><h3>Aparelhos da loja</h3>
             {Object.values(aparelhos).sort((a, b) => (b.ultimo_acesso ?? "").localeCompare(a.ultimo_acesso ?? "")).map((a) => (
               <div key={a.uid} className="linha-it" data-testid="aparelho">
-                <span><b>{a.nome}</b> {a.uid === uid && <small>(este)</small>}<br /><small>{a.papel === "admin" ? "Admin" : "Caixa"} · {a.plataforma ?? ""} · v{a.versao_code ?? "?"} · {a.ultimo_acesso ? dataHoraSP(a.ultimo_acesso) : ""}{a.bloqueado ? " · BLOQUEADO" : ""}</small></span>
+                <span><b>{a.nome}</b> {a.uid === uid && <small>(este)</small>}<br /><small>{a.papel === "admin" ? "Admin" : "Caixa"} · {a.plataforma ?? ""} · v{a.versao_code ?? "?"} · {a.ultimo_acesso ? dataHoraSP(a.ultimo_acesso) : ""}{a.bloqueado ? " · BLOQUEADO" : ""}
+                  <br />{a.operador ? `👤 ${a.operador} · ` : ""}{a.sync_em ? `sinal ${dataHoraSP(a.sync_em)} · ${a.pendentes ?? 0} na fila · ${(a.faltando_servidor ?? 0) + (a.faltando_aparelho ?? 0)} corrigidas${a.sync_ok_em ? ` · em dia às ${dataHoraSP(a.sync_ok_em)}` : ""}` : "sem sinal da conferência ainda"}</small></span>
                 {a.uid !== uid && (
                   <span className="row">
                     <button className="btn peq b-claro" onClick={async () => { const n = prompt("Nome do aparelho", a.nome); if (n) await renomearAparelho(n, a.uid).catch((e) => toast(e.message)); }}>Nome</button>
@@ -116,5 +119,27 @@ function ConviteQR({ papel, aoFechar }: { papel: Papel; aoFechar: () => void }) 
         {!c && !erro && <p>Gerando…</p>}
       </div>
     </Modal>
+  );
+}
+
+function CardSync() {
+  const vigia = useLoja((e) => e.vigia);
+  const fila = useLoja((e) => e.fila);
+  const [rodando, setRodando] = useState(false);
+  const pend = fila.filter((o) => !o.erro).length;
+  const atraso = Math.floor(atrasoSeg(getEstado()) / 60);
+  return (
+    <div className="card" data-testid="card-sync"><h3>Sincronização</h3>
+      <p className="peq-t" style={{ margin: 0 }}>
+        {pend ? `${pend} aguardando envio (a mais antiga há ${atraso} min)` : "Nada aguardando envio"}.<br />
+        Conferência com o servidor: {vigia.em ? dataHoraSP(vigia.em) : "ainda não"}{vigia.okEm ? ` · tudo igual às ${dataHoraSP(vigia.okEm)}` : ""}
+        {vigia.faltandoServidor || vigia.faltandoAparelho ? ` · última: ${vigia.faltandoServidor} reenviada(s), ${vigia.faltandoAparelho} baixada(s)` : ""}
+        {vigia.erro ? ` · erro: ${vigia.erro}` : ""}
+      </p>
+      <p className="peq-t mut">O app confere sozinho a cada 2 minutos (últimos 7 dias). “Reenviar tudo” confere 34 dias, reenvia o que só este aparelho tem e baixa o que falta.</p>
+      <button className="btn b-claro" disabled={rodando} data-testid="reenviar-tudo"
+        onClick={async () => { setRodando(true); const r = await reenviarTudo().finally(() => setRodando(false)); toast(r ? `Conferido: ${r.reenviadas} reenviada(s), ${r.baixadas} baixada(s)` : "Sem internet agora — tento de novo sozinho"); }}>
+        {rodando ? "Conferindo…" : "🔁 Reenviar tudo"}</button>
+    </div>
   );
 }

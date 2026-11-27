@@ -183,3 +183,6 @@ html.leitor-nativo-ativo .leitor-visor {
 }
 .log-leitor { max-height: 260px; overflow: auto; font-size: 12px; }
 .log-leitor .erro { color: var(--tomate-2); }
+.alerta-sync{background:var(--ambar-clara);color:#6b430a;border-bottom:1px solid #e9c46a;padding:6px 12px;font-size:13.5px;font-weight:700}
+.alerta-sync .l{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:2px 0}
+.op-btn{background:none;border:0;color:inherit;text-decoration:underline;cursor:pointer;font:inherit;padding:0}

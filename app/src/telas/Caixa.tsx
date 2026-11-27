@@ -252,7 +252,7 @@ function VendasHoje({ aoFechar }: { aoFechar: () => void }) {
       <div className="card" style={{ padding: "2px 12px" }}>
         {lista.map((v) => (
           <div key={v.id} className="linha-it" data-testid="venda-hoje">
-            <span><b>{horaSP(v.criado_em)}</b> <small>{v.forma ?? ""} {porVenda[v.id]?.slice(0, 3).join(", ") ?? (v.origem === "app_antigo" ? "app antigo" : "")} {v.pendente ? "· aguardando envio" : ""}</small></span>
+            <span><b>{horaSP(v.criado_em)}</b> <small>{v.forma ?? ""} {porVenda[v.id]?.slice(0, 3).join(", ") ?? (v.origem === "app_antigo" ? "app antigo" : "")} {v.operador ? `· ${v.operador}` : ""} {v.pendente ? "· aguardando envio" : ""}</small></span>
             <span className="row"><b>{brl(v.total)}</b>
               {(papel === "admin" || v.aparelho === uid) && (
                 <button className="btn peq b-perigo" onClick={() => { if (confirm(`Apagar a venda de ${brl(v.total)}?`)) enfileirar("excluir_venda", { id: v.id }); }}>Apagar</button>

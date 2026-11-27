@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLoja, iniciar } from "./lib/loja";
-import { StatusSync, Toaster, useLargo } from "./comum";
+import { AlertaSync, PerguntaOperador, StatusSync, Toaster, useLargo } from "./comum";
 import { EH_TESTE, LOJA, NOME_LOJA, VERSAO_NOME } from "./lib/config";
 import { brl } from "./lib/util";
 import Caixa, { useResumoDia } from "./telas/Caixa";
@@ -22,6 +22,10 @@ export default function App() {
   const papel = useLoja((e) => e.papel);
   const largo = useLargo();
   const [tela, setTelaS] = useState<Tela>(lerTela);
+  const operador = useLoja((e) => e.operador);
+  const [perguntar, setPerguntar] = useState(false);
+  const [jaPerguntou, setJaPerguntou] = useState(false);
+  useEffect(() => { const f = () => setPerguntar(true); window.addEventListener("cv3-trocar-operador", f); return () => window.removeEventListener("cv3-trocar-operador", f); }, []);
   useEffect(() => { void iniciar(); }, []);
   useEffect(() => { const f = () => setTelaS(lerTela()); window.addEventListener("hashchange", f); return () => window.removeEventListener("hashchange", f); }, []);
   const setTela = (t: Tela) => { location.hash = t; setTelaS(t); };
@@ -32,6 +36,7 @@ export default function App() {
   if (fase === "iniciando") return <div className="tela-cheia"><div style={{ fontSize: 48 }}>🥬</div><p>Abrindo…</p></div>;
 
   const admin = papel === "admin";
+  const modalOperador = (perguntar || (!operador && !jaPerguntou)) ? <PerguntaOperador aoFechar={() => { setPerguntar(false); setJaPerguntou(true); }} /> : null;
   const telaOk: Tela = (tela === "fornecedores" || tela === "contagem") && !admin ? "caixa" : tela === "mais" && largo ? "ajustes" : tela;
   const conteudo = (
     <>
@@ -59,9 +64,11 @@ export default function App() {
           </nav>
           <main className="main">
             <div className="cab-pc"><h1>{TITULOS[telaOk]}</h1><StatusSync /></div>
+            <AlertaSync />
             <div className="corpo" style={{ maxWidth: telaOk === "caixa" ? 560 : telaOk === "chegou" ? 720 : 1100 }}>{conteudo}</div>
           </main>
         </div>
+        {modalOperador}
         <Toaster />
       </div>
     );
@@ -75,6 +82,7 @@ export default function App() {
         <div className="l1"><h1>{TITULOS[telaOk]}</h1><StatusSync /></div>
         <SubTitulo />
       </header>
+      <AlertaSync />
       <div className="corpo">{conteudo}</div>
       <nav className="nav">
         {nav.map((t) => (
@@ -83,25 +91,27 @@ export default function App() {
           </button>
         ))}
       </nav>
+      {modalOperador}
       <Toaster />
     </div>
   );
 }
 
 function SubTitulo() {
-  const meuNome = useLoja((e) => e.meuNome);
+  const operador = useLoja((e) => e.operador);
   const r = useResumoDia();
-  return <div className="sub">{NOME_LOJA} · {meuNome} · hoje {r.n} vendas · {brl(r.total)}</div>;
+  return <div className="sub">{NOME_LOJA} · <button className="op-btn" onClick={trocarOperador} data-testid="operador">👤 {operador || "sem nome"}</button> · hoje {r.n} vendas · {brl(r.total)}</div>;
 }
 
 function RodapePC() {
   const meuNome = useLoja((e) => e.meuNome);
+  const operador = useLoja((e) => e.operador);
   const aparelhos = useLoja((e) => e.aparelhos);
   const r = useResumoDia();
   const ativos = Object.values(aparelhos).filter((a) => a.ultimo_acesso && Date.now() - new Date(a.ultimo_acesso).getTime() < 86400_000).length;
   return (
     <div className="rod">
-      💻 {meuNome}<br />Hoje: {r.n} vendas · {brl(r.total)}<br />lucro {r.estimado ? "≈ " : ""}{brl(r.lucro)}<br />{ativos} aparelho(s) usados nas últimas 24 h<br /><span style={{ opacity: 0.6 }}>v{VERSAO_NOME}</span>
+      💻 {meuNome}<br /><button className="op-btn" onClick={trocarOperador} data-testid="operador">👤 {operador || "sem nome"} (trocar)</button><br />Hoje: {r.n} vendas · {brl(r.total)}<br />lucro {r.estimado ? "≈ " : ""}{brl(r.lucro)}<br />{ativos} aparelho(s) usados nas últimas 24 h<br /><span style={{ opacity: 0.6 }}>v{VERSAO_NOME}</span>
     </div>
   );
 }
@@ -122,3 +132,5 @@ function Mais({ setTela, admin }: { setTela: (t: Tela) => void; admin: boolean }
     </>
   );
 }
+
+function trocarOperador() { window.dispatchEvent(new Event("cv3-trocar-operador")); }

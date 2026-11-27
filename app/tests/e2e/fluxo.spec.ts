@@ -1,15 +1,25 @@
 import { test, expect, type Page, type Browser } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
 const COD = JSON.parse(readFileSync("/home/box/.secrets/controle-vendas/v3-codigos.json", "utf8")).teste;
 const tag = Math.random().toString(36).slice(2, 7);
 const codigoBarras = "789" + String(Date.now()).slice(-10);
 
+// o celular reaproveita só a sessão anônima entre execuções (o Supabase limita logins anônimos por hora)
+const SESS_CEL = "/home/box/.secrets/controle-vendas/sessoes-teste/e2e-celular.json";
 async function celular(browser: Browser): Promise<Page> {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  let storageState: any = undefined;
+  if (existsSync(SESS_CEL)) {
+    const st = JSON.parse(readFileSync(SESS_CEL, "utf8"));
+    for (const o of st.origins ?? []) o.localStorage = (o.localStorage ?? []).filter((x: any) => x.name === "cv3-sessao");
+    storageState = st;
+  }
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, storageState });
   const p = await ctx.newPage();
   await p.goto("/#caixa");
   await expect(p.getByTestId("visor")).toBeVisible({ timeout: 30_000 });
+  await expect.poll(async () => p.evaluate(() => Object.keys(localStorage).some((k) => k === "cv3-sessao")), { timeout: 20_000 }).toBe(true);
+  writeFileSync(SESS_CEL, JSON.stringify(await ctx.storageState()), { mode: 0o600 });
   return p;
 }
 async function pcAdmin(browser: Browser): Promise<Page> {
@@ -23,7 +33,12 @@ const sync = (p: Page) => expect(p.getByTestId("status-sync")).toHaveText(/Onlin
 
 test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({ browser }) => {
   const cel = await celular(browser);
+  // pede o nome do operador, mas sincroniza mesmo com a pergunta aberta
+  await expect(cel.getByTestId("nome-operador")).toBeVisible();
   await sync(cel);
+  await cel.getByTestId("nome-operador").fill(`Ana ${tag}`);
+  await cel.getByTestId("salvar-operador").click();
+  await expect(cel.getByTestId("operador")).toContainText(`Ana ${tag}`);
   await expect(cel.getByTestId("faixa-teste")).toBeVisible();
 
   // PC: tela de ligar aparelho → código de recuperação (Admin)
@@ -33,6 +48,7 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   await pc.getByTestId("ligar-entrar").click();
   await expect(pc.getByTestId("menu-fornecedores")).toBeVisible({ timeout: 30_000 });
   await sync(pc);
+  await pc.getByRole("button", { name: "Agora não" }).click(); // sem nome: continua funcionando
 
   // Admin cadastra fornecedor
   await pc.getByTestId("menu-fornecedores").click();
@@ -97,6 +113,7 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   await pc.getByTestId("resumo-dia").click();
   const linhas = pc.getByTestId("venda-hoje").filter({ hasText: `Banana ${tag}` });
   await expect(linhas).toHaveCount(1, { timeout: 15_000 });
+  await expect(linhas).toContainText(`Ana ${tag}`); // a venda leva o nome do operador
   await pc.keyboard.press("Escape");
 
   // estoque baixou para 26
@@ -117,6 +134,42 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   await pc.getByTestId("menu-caixa").click();
   await pc.getByTestId("resumo-dia").click();
   await expect(pc.getByTestId("venda-hoje").filter({ hasText: "12,37" }).first()).toBeVisible({ timeout: 20_000 });
+
+  // ---- vigia da sincronização ----
+  // 1) alerta no celular: venda presa na fila há 3 min
+  await cel.context().setOffline(true);
+  await cel.evaluate(() => window.dispatchEvent(new Event("offline")));
+  for (const k of ["4", "5", "6"]) await cel.getByTestId("teclado").getByRole("button", { name: k, exact: true }).click();
+  await cel.getByTestId("registrar").click();
+  await cel.evaluate(() => (window as any).__cv3.envelhecerFila(3));
+  await expect(cel.getByTestId("alerta-sync")).toContainText(/Sincronização atrasada 3 min · 1 faltando/, { timeout: 40_000 });
+  // 2) a venda "se perde" da fila (simula falha) antes de subir; volta a internet
+  await cel.evaluate(() => (window as any).__cv3.perderFila());
+  await cel.context().setOffline(false);
+  await cel.evaluate(() => window.dispatchEvent(new Event("online")));
+  await sync(cel);
+  // o vigia acha a venda que só o celular tem e reenvia a cópia guardada (botão Reenviar tudo)
+  await cel.getByTestId("nav-mais").click();
+  await cel.getByTestId("mais-ajustes").click();
+  await cel.getByTestId("reenviar-tudo").click();
+  await expect(cel.getByTestId("toast")).toContainText(/Conferido/, { timeout: 40_000 });
+  await sync(cel);
+  await pc.getByTestId("menu-caixa").click();
+  await pc.getByTestId("resumo-dia").click();
+  const v456 = pc.getByTestId("venda-hoje").filter({ hasText: "4,56" }).first();
+  await expect(v456).toBeVisible({ timeout: 20_000 });
+  await pc.keyboard.press("Escape");
+  // 3) o PC "esquece" uma venda → Reenviar tudo baixa do servidor
+  const id = await pc.evaluate(() => { const e = (window as any).__cv3.getEstado(); const v = Object.values(e.vendas as Record<string, any>).find((x) => x.total === 4.56); (window as any).__cv3.esquecerVenda(v.id); return v.id; });
+  expect(id).toBeTruthy();
+  await pc.getByTestId("menu-ajustes").click();
+  await pc.getByTestId("reenviar-tudo").click();
+  await expect(pc.getByTestId("toast")).toContainText(/1 baixada/, { timeout: 40_000 });
+  // 4) PC (Admin) mostra alerta quando outro aparelho informa atraso
+  await cel.evaluate(() => (window as any).__cv3.sinalTeste({ pendentes: 2, atraso_seg: 420, faltando_servidor: 0, faltando_aparelho: 0 }));
+  await expect(pc.getByTestId("alerta-sync")).toContainText(/atrasado 7 min · 2 faltando/, { timeout: 20_000 });
+  await cel.evaluate(() => (window as any).__cv3.sinalTeste({ pendentes: 0, atraso_seg: 0, faltando_servidor: 0, faltando_aparelho: 0, em_dia: true }));
+  await expect(pc.getByTestId("alerta-sync")).toHaveCount(0, { timeout: 20_000 });
 });
 
 test("atualização obrigatória bloqueia o app", async ({ browser }) => {

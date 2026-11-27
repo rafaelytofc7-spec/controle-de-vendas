@@ -1,7 +1,7 @@
 // Testes do banco v3 na loja "teste" (projeto real, chave publicável, login anônimo).
 // Uso: node tests/servidor/servidor.test.mjs
 import { createClient } from "@supabase/supabase-js";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
@@ -11,14 +11,26 @@ const COD = JSON.parse(readFileSync("/home/box/.secrets/controle-vendas/v3-codig
 const LOJA = "teste";
 const novo = () => createClient(URL, KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 async function anon() { const c = novo(); const { error } = await c.auth.signInAnonymously(); if (error) throw error; return c; }
+// sessões reaproveitadas entre execuções (o Supabase limita logins anônimos por hora por internet)
+const PASTA_SESS = "/home/box/.secrets/controle-vendas/sessoes-teste";
+async function sessao(nome) {
+  mkdirSync(PASTA_SESS, { recursive: true, mode: 0o700 });
+  const f = `${PASTA_SESS}/${nome}.json`;
+  const mem = existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : {};
+  const storage = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => { mem[k] = v; writeFileSync(f, JSON.stringify(mem), { mode: 0o600 }); }, removeItem: (k) => { delete mem[k]; writeFileSync(f, JSON.stringify(mem), { mode: 0o600 }); } };
+  const c = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: false, storage, storageKey: "sb-teste" } });
+  const { data: { session } } = await c.auth.getSession();
+  if (!session) { const { error } = await c.auth.signInAnonymously(); if (error) throw error; }
+  return c;
+}
 const rpc = async (c, f, a) => { const { data, error } = await c.rpc(f, a); if (error) throw new Error(error.message); return data; };
 const semAcesso = async (p) => { const r = await p; assert.equal(r.erro, "codigo_invalido"); assert.equal(r.papel, undefined); };
 const falha = async (p, re) => { try { await p; } catch (e) { assert.match(e.message, re); return; } assert.fail("deveria falhar: " + re); };
 let ok = 0; const t = async (nome, fn) => { const t0 = Date.now(); await fn(); ok++; console.log(`✔ ${nome} (${Date.now() - t0} ms)`); };
 
-const estranho = await anon();
-const caixa = await anon();
-const admin = await anon();
+const estranho = await sessao("estranho");
+const caixa = await sessao("caixa");
+const admin = await sessao("admin");
 const tag = randomUUID().slice(0, 6);
 
 await t("sem código não entra e não lê nada", async () => {
@@ -32,7 +44,7 @@ await t("sem código não entra e não lê nada", async () => {
 });
 
 await t("código do APK entra como Caixa; recuperação entra como Admin", async () => {
-  assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_entrada, p_nome: "Caixa teste", p_plataforma: "web", p_versao: 30002 })).papel, "caixa");
+  assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_entrada, p_nome: "Caixa teste", p_plataforma: "web", p_versao: 30003 })).papel, "caixa");
   assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_nome: "Caixa teste" })).papel, "caixa"); // já é membro, sem código
   assert.equal((await rpc(admin, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_recuperacao, p_nome: "Admin teste" })).papel, "admin");
 });
@@ -50,7 +62,7 @@ await t("Caixa cadastra produto novo mas não edita preço, fornecedor nem estoq
 await t("Admin: fornecedor, contagem inicial e entrada → custo médio certo", async () => {
   await rpc(admin, "v3_salvar_fornecedor", { p_loja: LOJA, p: { id: forn, nome: `Fornecedor ${tag}`, tipo: "Ceasa" } });
   await rpc(admin, "v3_contagem", { p_loja: LOJA, p: { id: `c-${tag}`, itens: [{ produto_id: prod, quantidade: 10, custo: 5 }] } });
-  const r = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p_plataforma: "web", p_versao: 30002,
+  const r = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p_plataforma: "web", p_versao: 30003,
     p: { id: `e-${tag}`, fornecedor_id: forn, frete: 4, itens: [{ id: `e-${tag}-1`, produto_id: prod, quantidade: 20, valor_pago: 100, perda_pct: 8 }] } });
   assert.ok(Math.abs(r.itens[0].custo_efetivo - 104 / 18.4) < 1e-3);
   const rep = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p: { id: `e-${tag}`, itens: [] } });
@@ -67,8 +79,8 @@ const venda = randomUUID();
 await t("venda com itens: baixa estoque, guarda custo, reenvio não duplica", async () => {
   const p = { id: venda, total: 11.24, forma: "pix", criado_em: new Date().toISOString(),
     itens: [{ id: `${venda}-1`, produto_id: prod, nome: "Tomate", unidade: "kg", quantidade: 1.25, preco_unit: 8.99, total: 11.24 }] };
-  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30002 });
-  const r2 = await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30002 });
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30003 });
+  const r2 = await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30003 });
   assert.equal(r2.repetida, true);
   const { data: v } = await caixa.from("v3_vendas").select("*").eq("loja_id", LOJA).eq("id", venda).single();
   assert.equal(v.tem_itens, true); assert.ok(Number(v.custo_total) > 6 && Number(v.custo_total) < 7.5);
@@ -78,7 +90,7 @@ await t("venda com itens: baixa estoque, guarda custo, reenvio não duplica", as
 
 await t("venda rápida só com valor", async () => {
   const id = randomUUID();
-  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 7.5, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30002 });
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 7.5, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30003 });
   const { data: v } = await caixa.from("v3_vendas").select("tem_itens,custo_total,origem").eq("loja_id", LOJA).eq("id", id).single();
   assert.deepEqual(v, { tem_itens: false, custo_total: null, origem: "v3" });
 });
@@ -95,12 +107,12 @@ await t("Caixa apaga a própria venda e o estoque volta", async () => {
 await t("tempo real: venda de um aparelho chega no outro", async () => {
   const id = randomUUID();
   const chegou = new Promise((res, rej) => {
-    const timer = setTimeout(() => rej(new Error("não chegou em 10 s")), 10000);
+    const timer = setTimeout(() => rej(new Error("não chegou em 15 s")), 15000);
     const ch = admin.channel(`t-${tag}`).on("postgres_changes", { event: "INSERT", schema: "public", table: "v3_vendas", filter: `loja_id=eq.${LOJA}` }, (p) => {
       if (p.new.id === id) { clearTimeout(timer); res(Date.now()); admin.removeChannel(ch); }
     }).subscribe(async (s, err) => {
       if (s !== "SUBSCRIBED") console.log("   canal:", s, err?.message ?? "");
-      if (s === "SUBSCRIBED") { globalThis.t0 = Date.now(); await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 3, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30002 }); }
+      if (s === "SUBSCRIBED") { await new Promise((ok) => setTimeout(ok, 1500)); /* o servidor leva ~1 s para ligar a escuta depois do SUBSCRIBED */ globalThis.t0 = Date.now(); await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 3, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30003 }); }
     });
   });
   const fim = await chegou;
@@ -109,7 +121,7 @@ await t("tempo real: venda de um aparelho chega no outro", async () => {
 
 await t("convite de uso único (QR) e bloqueio de aparelho", async () => {
   const { codigo } = await rpc(admin, "v3_criar_convite", { p_loja: LOJA, p_papel: "caixa" });
-  const novoAp = await anon(); const outro = await anon();
+  const novoAp = await anon(); const outro = await sessao("outro");
   assert.equal((await rpc(novoAp, "v3_entrar", { p_loja: LOJA, p_codigo: codigo, p_nome: "Convidado" })).papel, "caixa");
   await semAcesso(rpc(outro, "v3_entrar", { p_loja: LOJA, p_codigo: codigo, p_nome: "Outro" }));
   const { data: { user } } = await novoAp.auth.getUser();
@@ -121,8 +133,9 @@ await t("convite de uso único (QR) e bloqueio de aparelho", async () => {
 });
 
 await t("muitas tentativas erradas são bloqueadas", async () => {
-  const c = await anon();
-  for (let i = 0; i < 8; i++) await semAcesso(rpc(c, "v3_entrar", { p_loja: LOJA, p_codigo: `ERRADO${i}` }));
+  const c = await sessao("tentador");
+  // (se rodou há menos de 10 min, o bloqueio já pode estar valendo)
+  for (let i = 0; i < 8; i++) { try { await semAcesso(rpc(c, "v3_entrar", { p_loja: LOJA, p_codigo: `ERRADO${i}` })); } catch (e) { if (/muitas_tentativas/.test(e.message)) break; throw e; } }
   await falha(rpc(c, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_recuperacao }), /muitas_tentativas/);
 });
 
@@ -131,6 +144,33 @@ await t("Caixa não lê outra loja", async () => {
   assert.equal(data.length, 0);
   const { data: d2 } = await caixa.from("vendas").select("id").limit(1);
   assert.equal((d2 ?? []).length, 0, "tabela antiga não deve abrir para aparelho v3");
+});
+
+
+await t("vigia: operador na venda, sinal com manifesto igual ao recalculado, ids do dia", async () => {
+  const { createHash } = await import("node:crypto");
+  const vid = `vg-${tag}`;
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p_plataforma: "web", p_versao: 30003, p: { id: vid, total: 7.25, forma: "pix", operador: `Bia ${tag}`, criado_em: new Date().toISOString() } });
+  const { data: v } = await caixa.from("v3_vendas").select("operador").eq("loja_id", LOJA).eq("id", vid).single();
+  assert.equal(v.operador, `Bia ${tag}`);
+  const dia = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const r = await rpc(caixa, "v3_sync_sinal", { p_loja: LOJA, p_versao: 30003, p: { operador: `Bia ${tag}`, pendentes: 3, atraso_seg: 300, de: dia } });
+  const ids = await rpc(caixa, "v3_sync_ids", { p_loja: LOJA, p_dia: dia });
+  assert.ok(ids.some(([id]) => id === vid));
+  const h = createHash("sha256").update(ids.map(([id, ex]) => id + (ex ? ":x" : "")).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(",")).digest("hex");
+  assert.equal(r.dias[dia].hash, h, "hash do servidor = hash recalculado no aparelho");
+  const { data: a } = await admin.from("v3_aparelhos").select("operador,pendentes,atraso_seg,sync_em").eq("loja_id", LOJA).eq("nome", "Caixa teste");
+  assert.ok(a.some((x) => x.operador === `Bia ${tag}` && x.pendentes === 3 && x.atraso_seg === 300 && x.sync_em));
+  await falha(rpc(estranho, "v3_sync_ids", { p_loja: LOJA, p_dia: dia }), /sem_acesso|42501|permission/);
+});
+
+await t("backup: exportação só com a chave (aparelho e chave errada não conseguem)", async () => {
+  await falha(rpc(novo(), "v3_backup_exportar", { p_loja: LOJA, p_chave: "x".repeat(40) }), /chave_invalida/);
+  await falha(rpc(caixa, "v3_backup_exportar", { p_loja: LOJA, p_chave: "x".repeat(40) }), /permission|42501|not find|chave_invalida/);
+  const chave = readFileSync("/home/box/.secrets/controle-vendas/v3-backup-chave.txt", "utf8").trim();
+  const r = await rpc(novo(), "v3_backup_exportar", { p_loja: LOJA, p_chave: chave, p_desde: new Date(Date.now() - 3600_000).toISOString() });
+  assert.ok(r.vendas.some((x) => x.id === `vg-${tag}` && x.operador === `Bia ${tag}`));
+  assert.ok(r.manifesto && r.cadastro.produtos.length > 0);
 });
 
 console.log(`\n${ok} testes do servidor passaram.`);

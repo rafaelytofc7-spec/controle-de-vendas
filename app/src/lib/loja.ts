@@ -4,7 +4,7 @@ import { supa } from "./supa";
 import { ler, gravar } from "./persist";
 import { CODIGO_ENTRADA, LOJA, PLATAFORMA, VERSAO_CODE } from "./config";
 import { custoEfetivo, custoMedioNovo } from "./calc";
-import { novoId } from "./util";
+import { diaSP, novoId } from "./util";
 import type {
   Aparelho, AppVersao, Codigo, Configuracao, Custo, Entrada, EntradaItem, Fornecedor, Op, Papel, Produto, TipoOp, Venda, VendaItem,
 } from "./tipos";
@@ -34,6 +34,18 @@ export interface Estado {
   ultimoErro: string | null;
   erroEntrada: string | null;
   ultimaSync: string | null;
+  operador: string;
+  vigia: Vigia;
+}
+
+/** Situação da conferência automática (aparelho × servidor). */
+export interface Vigia {
+  em: string | null;        // última conferência que terminou
+  okEm: string | null;      // última vez que estava tudo igual ao servidor
+  faltandoServidor: number; // vendas deste aparelho que o servidor não tinha (reenviadas)
+  faltandoAparelho: number; // vendas do servidor que este aparelho não tinha (baixadas)
+  rodando: boolean;
+  erro: string | null;
 }
 
 const vazio = (): Estado => ({
@@ -42,6 +54,8 @@ const vazio = (): Estado => ({
   aparelhos: {}, config: null, versao: {}, fila: [],
   online: typeof navigator === "undefined" ? true : navigator.onLine, tempoReal: false, enviando: false,
   ultimoErro: null, erroEntrada: null, ultimaSync: null,
+  operador: typeof localStorage === "undefined" ? "" : localStorage.getItem("cv3-operador") || "",
+  vigia: { em: null, okEm: null, faltandoServidor: 0, faltandoAparelho: 0, rodando: false, erro: null },
 });
 
 let estado: Estado = vazio();
@@ -99,14 +113,19 @@ export async function iniciar(codigo?: string): Promise<void> {
     iniciado = true;
     const salvo = await ler<Partial<Estado>>(CHAVE);
     const fila = (await ler<Op[]>(`fila-${LOJA}`)) ?? [];
-    if (salvo) estado = { ...estado, ...salvo, fila, fase: "iniciando" };
+    if (salvo) estado = { ...estado, ...salvo, fila, fase: "iniciando", operador: estado.operador, vigia: { ...estado.vigia, ...(salvo.vigia ?? {}), rodando: false } };
     else estado = { ...estado, fila };
+    diario = (await ler<Diario>(`diario-${LOJA}`)) ?? {};
+    const limite = new Date(Date.now() - 40 * 86400_000).toISOString();
+    for (const [k, j] of Object.entries(diario)) if (j.criado_em < limite) delete diario[k];
     emitir();
     window.addEventListener("online", () => { set({ online: true }); void reconectar("online"); });
     window.addEventListener("offline", () => set({ online: false, tempoReal: false }));
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") void reconectar("voltou"); });
     window.setInterval(() => { if (estado.fila.some((o) => !o.erro)) void enviarFila(); }, 20_000);
     window.setInterval(() => void checarVersao(), 15 * 60_000);
+    window.setInterval(() => void vigiar(), 2 * 60_000);
+    window.setInterval(() => emitir(), 30_000); // atualiza os "há X min" na tela
   }
   await entrar(codigo);
 }
@@ -148,7 +167,7 @@ async function entrar(codigo?: string): Promise<void> {
     set({ fase: "pronto", uid, papel: r.papel, meuNome: r.nome, erroEntrada: r.erro ? "Código inválido ou vencido." : null, online: true });
     await carregar();
     assinar();
-    void enviarFila();
+    void enviarFila().then(() => vigiar());
   } catch (e) {
     // sem internet: se já entrou antes, abre com os dados locais
     if (localStorage.getItem("cv3-entrou") === "1") {
@@ -255,7 +274,7 @@ function assinar() {
     if (status === "SUBSCRIBED") {
       const voltou = !estado.tempoReal;
       set({ tempoReal: true, online: true });
-      if (voltou) void carregar().then(() => enviarFila()).catch(() => {});
+      if (voltou) void carregar().then(() => enviarFila()).then(() => vigiar()).catch(() => {});
     } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
       set({ tempoReal: false });
       clearTimeout(tReconectar);
@@ -279,7 +298,14 @@ export async function reconectar(_motivo: string): Promise<void> {
 
 // ---------- fila de envio ----------
 export function enfileirar(tipo: TipoOp, dados: Record<string, unknown>): Op {
+  if (tipo === "venda" && dados.operador === undefined) dados = { ...dados, operador: estado.operador || null };
   const op: Op = { id: novoId(), tipo, dados, criado_em: new Date().toISOString(), tentativas: 0 };
+  // diário local: cópia de tudo que este aparelho vendeu/excluiu (não é apagado quando recarrega do servidor)
+  if (tipo === "venda") { diario[dados.id as string] = { venda: dados, criado_em: (dados.criado_em as string) || op.criado_em }; void gravarDiario(); }
+  if (tipo === "excluir_venda") {
+    const id = dados.id as string;
+    diario[id] = { ...(diario[id] ?? { venda: null, criado_em: estado.vendas[id]?.criado_em ?? op.criado_em }), excluir: true }; void gravarDiario();
+  }
   aplicarLocal(op, true);
   set({ fila: [...estado.fila, op] });
   void gravarFila().then(() => enviarFila());
@@ -363,7 +389,7 @@ function aplicarLocal(op: Op, novo: boolean) {
       const itens = (d.itens ?? []) as any[];
       const v: Venda = { loja_id: LOJA, id: d.id, total: d.total, forma: d.forma ?? null, recebido: d.recebido ?? null, troco: d.troco ?? null,
         desconto: 0, origem: "v3", tem_itens: itens.length > 0, custo_total: null, aparelho: estado.uid, excluido: false,
-        criado_em: d.criado_em, atualizado_em: agora, pendente: true };
+        criado_em: d.criado_em, atualizado_em: agora, operador: d.operador ?? null, pendente: true };
       const novosItens = { ...estado.itens }; const custos = { ...estado.custos }; let custoTot = 0; let semCusto = false;
       itens.forEach((it, i) => {
         const c = it.produto_id ? custos[it.produto_id] : undefined;
@@ -456,4 +482,176 @@ export async function renomearAparelho(nome: string, uid?: string): Promise<void
 export async function definirAparelho(uid: string, papel: Papel | null, bloqueado: boolean | null): Promise<void> {
   const { error } = await supa().rpc("v3_definir_aparelho", { p_loja: LOJA, p_uid: uid, p_papel: papel, p_bloqueado: bloqueado });
   if (error) throw new Error(traduzirErro(msgErro(error)));
+}
+
+// ---------- operador (quem está no caixa) ----------
+export function definirOperador(nome: string) {
+  const n = nome.trim().slice(0, 40);
+  localStorage.setItem("cv3-operador", n);
+  if (n) {
+    const rec = [n, ...lerOperadoresRecentes().filter((x) => x !== n)].slice(0, 6);
+    localStorage.setItem("cv3-operadores", JSON.stringify(rec));
+  }
+  set({ operador: n });
+  void vigiar(); // avisa o servidor (sem travar nada)
+}
+export function lerOperadoresRecentes(): string[] {
+  try { return JSON.parse(localStorage.getItem("cv3-operadores") || "[]"); } catch { return []; }
+}
+
+// ---------- vigia da sincronização ----------
+// Diário local: cada venda/exclusão feita NESTE aparelho, com o pedido completo, por 40 dias.
+type Diario = Record<string, { venda: Record<string, unknown> | null; criado_em: string; excluir?: boolean }>;
+let diario: Diario = {};
+async function gravarDiario() { await gravar(`diario-${LOJA}`, diario); }
+
+async function sha256hex(txt: string): Promise<string> {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+type Manif = Record<string, { n: number; soma: number; hash: string }>;
+/** Mesmo cálculo do servidor (v3_manifesto). */
+async function manifestoLocal(vendas: Venda[]): Promise<Manif> {
+  const dias: Record<string, { n: number; c: number; ids: string[] }> = {};
+  for (const v of vendas) {
+    const d = (dias[diaSP(v.criado_em)] ??= { n: 0, c: 0, ids: [] });
+    if (!v.excluido) { d.n++; d.c += Math.round(Number(v.total) * 100); }
+    d.ids.push(v.id + (v.excluido ? ":x" : ""));
+  }
+  const out: Manif = {};
+  for (const [dia, d] of Object.entries(dias)) {
+    d.ids.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    out[dia] = { n: d.n, soma: d.c / 100, hash: await sha256hex(d.ids.join(",")) };
+  }
+  return out;
+}
+const igual = (a?: { n: number; soma: number; hash: string }, b?: { n: number; soma: number; hash: string }) =>
+  !!a && !!b && a.n === b.n && Math.round(a.soma * 100) === Math.round(Number(b.soma) * 100) && a.hash === b.hash;
+
+/** Atraso: há quanto tempo a operação mais antiga está esperando para subir (segundos). */
+export function atrasoSeg(e: Estado = estado): number {
+  const pend = e.fila.filter((o) => !o.erro);
+  if (!pend.length) return 0;
+  return Math.max(0, Math.round((Date.now() - Math.min(...pend.map((o) => Date.parse(o.criado_em)))) / 1000));
+}
+
+function montarPayload(v: Venda): Record<string, unknown> {
+  const itens = Object.values(estado.itens).filter((i) => i.venda_id === v.id)
+    .map((i) => ({ id: i.id, produto_id: i.produto_id, nome: i.nome, unidade: i.unidade, quantidade: i.quantidade, preco_unit: i.preco_unit, total: i.total }));
+  return { id: v.id, total: v.total, forma: v.forma, recebido: v.recebido, troco: v.troco, criado_em: v.criado_em, operador: v.operador ?? null, itens };
+}
+/** Põe de novo na fila (sem mexer no estoque local, que já foi descontado). */
+function reenfileirar(tipo: TipoOp, dados: Record<string, unknown>) {
+  if (estado.fila.some((o) => o.tipo === tipo && o.dados.id === dados.id)) return;
+  const op: Op = { id: novoId(), tipo, dados, criado_em: new Date().toISOString(), tentativas: 0 };
+  const v = estado.vendas[dados.id as string];
+  set({ fila: [...estado.fila, op], ...(v && tipo === "venda" ? { vendas: { ...estado.vendas, [v.id]: { ...v, pendente: true } } } : {}) });
+}
+
+async function sinal(extra: Record<string, unknown>): Promise<{ agora: string; dias: Manif }> {
+  const { data, error } = await supa().rpc("v3_sync_sinal", {
+    p_loja: LOJA, p_versao: VERSAO_CODE,
+    p: { operador: estado.operador || null, pendentes: estado.fila.filter((o) => !o.erro).length, atraso_seg: atrasoSeg(),
+      faltando_servidor: estado.vigia.faltandoServidor, faltando_aparelho: estado.vigia.faltandoAparelho, ...extra },
+  });
+  if (error) throw error;
+  return data as { agora: string; dias: Manif };
+}
+
+let vigiando = false;
+/**
+ * Compara o que o aparelho tem com o servidor, dia a dia (7 dias; "tudo" = 34 dias).
+ * Falta no servidor → reenvia a cópia guardada no aparelho. Falta no aparelho → baixa do servidor.
+ */
+export async function vigiar(tudo = false): Promise<{ reenviadas: number; baixadas: number } | null> {
+  if (vigiando || estado.fase !== "pronto" || !estado.uid) return null;
+  if (typeof navigator !== "undefined" && !navigator.onLine) { emitir(); return null; }
+  vigiando = true;
+  set({ vigia: { ...estado.vigia, rodando: true } });
+  try {
+    const de = diaSP(new Date(Date.now() - (tudo ? 34 : 7) * 86400_000));
+    const r = await sinal({ de, em_dia: false });
+    const naFila = new Set(estado.fila.filter((o) => o.tipo === "venda" || o.tipo === "excluir_venda").map((o) => o.dados.id as string));
+    // tudo que não está na fila entra na conta (uma venda "pendente" que saiu da fila sem subir aparece como diferença)
+    const locais = Object.values(estado.vendas).filter((v) => diaSP(v.criado_em) >= de && !naFila.has(v.id));
+    const local = await manifestoLocal(locais);
+    const suspeitos = new Set<string>();
+    for (const dia of new Set([...Object.keys(local), ...Object.keys(r.dias)])) if (dia >= de && !igual(local[dia], r.dias[dia])) suspeitos.add(dia);
+    // vendas do diário que sumiram do aparelho (nem na tela, nem na fila)
+    for (const [id, j] of Object.entries(diario)) if (j.venda && diaSP(j.criado_em) >= de && !estado.vendas[id] && !naFila.has(id)) suspeitos.add(diaSP(j.criado_em));
+
+    let reenviadas = 0; const baixar: string[] = [];
+    for (const dia of [...suspeitos].sort()) {
+      const { data, error } = await supa().rpc("v3_sync_ids", { p_loja: LOJA, p_dia: dia });
+      if (error) throw error;
+      const srv = new Map((data as [string, boolean, string][]).map(([id, ex, at]) => [id, { ex, at }]));
+      for (const [id, s] of srv) {
+        if (naFila.has(id)) continue;
+        const l = estado.vendas[id];
+        if (!l || (l.excluido !== s.ex && (s.ex || !diario[id]?.excluir))) baixar.push(id);
+      }
+      const doDia = new Map<string, Venda | null>();
+      for (const v of locais) if (diaSP(v.criado_em) === dia) doDia.set(v.id, v);
+      for (const [id, j] of Object.entries(diario)) if (diaSP(j.criado_em) === dia && !doDia.has(id) && !naFila.has(id)) doDia.set(id, estado.vendas[id] ?? null);
+      for (const [id, v] of doDia) {
+        const s = srv.get(id);
+        const j = diario[id];
+        if (!s) {
+          const payload = j?.venda ?? (v && v.aparelho === estado.uid ? montarPayload(v) : null);
+          if (payload) {
+            reenfileirar("venda", payload); reenviadas++;
+            if (v?.excluido || j?.excluir) reenfileirar("excluir_venda", { id });
+          } else if (v && !s) {
+            // venda de outro aparelho que o servidor não tem: não é deste aparelho reenviar; some da tela até chegar do servidor
+            const m = { ...estado.vendas }; delete m[id]; set({ vendas: m });
+          }
+        } else if (j?.excluir && !s.ex) { reenfileirar("excluir_venda", { id }); reenviadas++; }
+      }
+    }
+    if (baixar.length) await baixarVendas(baixar);
+    if (reenviadas) await gravarFila();
+    const emDia = !reenviadas && !baixar.length && !estado.fila.some((o) => !o.erro);
+    const agora = new Date().toISOString();
+    set({ vigia: { em: agora, okEm: emDia ? agora : estado.vigia.okEm, faltandoServidor: reenviadas, faltandoAparelho: baixar.length, rodando: false, erro: null } });
+    if (reenviadas || baixar.length || emDia) await sinal({ de: diaSP(), em_dia: emDia });
+    if (reenviadas) void enviarFila();
+    return { reenviadas, baixadas: baixar.length };
+  } catch (e) {
+    set({ vigia: { ...estado.vigia, rodando: false, erro: ehErroDeRede(e) ? null : traduzirErro(msgErro(e)) } });
+    return null;
+  } finally {
+    vigiando = false;
+    if (estado.vigia.rodando) set({ vigia: { ...estado.vigia, rodando: false } });
+  }
+}
+
+async function baixarVendas(ids: string[]) {
+  const vendas: Venda[] = []; const itens: VendaItem[] = [];
+  for (let i = 0; i < ids.length; i += 150) {
+    const parte = ids.slice(i, i + 150);
+    vendas.push(...(await buscarTudo<Venda>("v3_vendas", (q) => q.in("id", parte))));
+    itens.push(...(await buscarTudo<VendaItem>("v3_venda_itens", (q) => q.in("venda_id", parte))));
+  }
+  set({ vendas: { ...estado.vendas, ...porChave(vendas, (v) => v.id) }, itens: { ...estado.itens, ...porChave(itens, (i) => i.id) } });
+}
+
+/** Botão "Reenviar tudo": tenta de novo o que deu erro de rede, recarrega e confere 34 dias. */
+export async function reenviarTudo(): Promise<{ reenviadas: number; baixadas: number } | null> {
+  set({ fila: estado.fila.map((o) => (o.erro && /internet|rede|fetch|network|timeout/i.test(o.erro) ? { ...o, erro: undefined } : o)) });
+  await gravarFila();
+  await reconectar("reenviar");
+  if (estado.fase === "pronto" && estado.online) await carregar().catch(() => {});
+  await enviarFila();
+  return vigiar(true);
+}
+
+// ganchos só para os testes automáticos (não entram no APK nem no site)
+if (import.meta.env.VITE_E2E === "1" && typeof window !== "undefined") {
+  (window as any).__cv3 = {
+    getEstado,
+    perderFila: () => { set({ fila: [] }); void gravarFila(); },
+    esquecerVenda: (id: string) => { const m = { ...estado.vendas }; delete m[id]; set({ vendas: m }); },
+    envelhecerFila: (min: number) => set({ fila: estado.fila.map((o) => ({ ...o, criado_em: new Date(Date.parse(o.criado_em) - min * 60_000).toISOString() })) }),
+    sinalTeste: (x: Record<string, unknown>) => sinal(x),
+  };
 }

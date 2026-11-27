@@ -258,9 +258,10 @@ begin
     return jsonb_build_object('ok', true, 'repetida', true);
   end if;
   if coalesce(v3_num(p,'total'),-1) < 0 then raise exception 'total_invalido'; end if;
-  insert into v3_vendas(loja_id, id, total, forma, recebido, troco, desconto, origem, aparelho, versao_code, criado_em)
+  insert into v3_vendas(loja_id, id, total, forma, recebido, troco, desconto, origem, aparelho, versao_code, criado_em, operador)
   values (p_loja, vid, round(v3_num(p,'total'),2), p->>'forma', v3_num(p,'recebido'), v3_num(p,'troco'), coalesce(v3_num(p,'desconto'),0),
-    'v3', auth.uid(), p_versao, least(coalesce((p->>'criado_em')::timestamptz, now()), now() + interval '5 minutes'));
+    'v3', auth.uid(), p_versao, least(coalesce((p->>'criado_em')::timestamptz, now()), now() + interval '5 minutes'),
+    left(nullif(trim(p->>'operador'), ''), 40));
   for it in select * from jsonb_array_elements(coalesce(p->'itens','[]'::jsonb)) loop
     i := i + 1; tem := true;
     qtd := v3_num(it,'quantidade');

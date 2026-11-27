@@ -15,3 +15,5 @@ app/android/capacitor-cordova-android-plugins/build/
 *.jks
 *.env
 .env*
+conferencias/
+app/tsconfig.tsbuildinfo

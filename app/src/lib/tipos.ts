@@ -19,12 +19,15 @@ export interface Fornecedor { loja_id: string; id: string; nome: string; tipo: s
 export interface Venda {
   loja_id: string; id: string; total: number; forma: string | null; recebido: number | null; troco: number | null; desconto: number;
   origem: string; tem_itens: boolean; custo_total: number | null; aparelho: string | null; excluido: boolean; criado_em: string; atualizado_em: string;
-  pendente?: boolean;
+  operador?: string | null; pendente?: boolean;
 }
 export interface VendaItem { loja_id: string; id: string; venda_id: string; produto_id: string | null; nome: string; unidade: string | null; quantidade: number; preco_unit: number; custo_unit: number | null; total: number }
 export interface Entrada { loja_id: string; id: string; fornecedor_id: string | null; data: string; frete: number; total: number; observacao: string | null; excluido: boolean; criado_em: string; pendente?: boolean }
 export interface EntradaItem { loja_id: string; id: string; entrada_id: string; produto_id: string; quantidade: number; valor_pago: number; perda_pct: number; custo_unitario: number | null; custo_efetivo: number | null; validade_em: string | null }
-export interface Aparelho { loja_id: string; uid: string; nome: string; papel: Papel; bloqueado: boolean; plataforma: string | null; versao_code: number | null; ultimo_acesso: string | null }
+export interface Aparelho {
+  loja_id: string; uid: string; nome: string; papel: Papel; bloqueado: boolean; plataforma: string | null; versao_code: number | null; ultimo_acesso: string | null;
+  operador?: string | null; sync_em?: string | null; sync_ok_em?: string | null; pendentes?: number; faltando_servidor?: number; faltando_aparelho?: number; atraso_seg?: number;
+}
 export interface Configuracao { loja_id: string; margem_padrao: number; arredondamento: "nenhum" | "49_99" | "x9"; modo_margem: "venda" | "markup"; telefone: string | null }
 export interface AppVersao { plataforma: string; minima: number; atual: number; nome_atual: string | null; url: string | null; novidades: string | null }
 
