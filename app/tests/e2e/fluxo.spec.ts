@@ -240,6 +240,25 @@ test("caixa no celular + admin no PC, em tempo real, offline e leitor", async ({
   await expect(pc.getByTestId("painel")).toContainText(`Ana ${tag}`);
 });
 
+test("APK novo entra sozinho como Caixa (sem QR, sem código) e não vê telas de Admin", async ({ browser }) => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const p = await ctx.newPage();
+  await p.goto("/#caixa");
+  await expect(p.getByTestId("visor")).toBeVisible({ timeout: 30_000 });
+  await expect(p.getByTestId("ligar-aparelho")).toHaveCount(0);
+  // pergunta o nome mas não trava: dá para fechar e sincroniza
+  await expect(p.getByTestId("nome-operador")).toBeVisible();
+  await sync(p);
+  expect(await p.evaluate(() => (window as any).__cv3.getEstado().papel)).toBe("caixa");
+  for (const tela of ["precos", "promocoes", "fornecedores", "contagem"]) {
+    await p.goto(`/#${tela}`);
+    await expect(p.getByTestId("visor").or(p.getByTestId("painel")).or(p.getByTestId("so-admin")).first()).toBeVisible({ timeout: 10_000 });
+    await expect(p.getByTestId("grafico-precos")).toHaveCount(0);
+    await expect(p.getByTestId("atualizar-sugestoes")).toHaveCount(0);
+  }
+  await ctx.close();
+});
+
 test("atualização obrigatória bloqueia o app", async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const p = await ctx.newPage();

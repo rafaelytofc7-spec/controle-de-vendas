@@ -44,7 +44,7 @@ await t("sem código não entra e não lê nada", async () => {
 });
 
 await t("código do APK entra como Caixa; recuperação entra como Admin", async () => {
-  assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_entrada, p_nome: "Caixa teste", p_plataforma: "web", p_versao: 30004 })).papel, "caixa");
+  assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_entrada, p_nome: "Caixa teste", p_plataforma: "web", p_versao: 30005 })).papel, "caixa");
   assert.equal((await rpc(caixa, "v3_entrar", { p_loja: LOJA, p_nome: "Caixa teste" })).papel, "caixa"); // já é membro, sem código
   assert.equal((await rpc(admin, "v3_entrar", { p_loja: LOJA, p_codigo: COD.codigo_recuperacao, p_nome: "Admin teste" })).papel, "admin");
 });
@@ -62,7 +62,7 @@ await t("Caixa cadastra produto novo mas não edita preço, fornecedor nem estoq
 await t("Admin: fornecedor, contagem inicial e entrada → custo médio certo", async () => {
   await rpc(admin, "v3_salvar_fornecedor", { p_loja: LOJA, p: { id: forn, nome: `Fornecedor ${tag}`, tipo: "Ceasa" } });
   await rpc(admin, "v3_contagem", { p_loja: LOJA, p: { id: `c-${tag}`, itens: [{ produto_id: prod, quantidade: 10, custo: 5 }] } });
-  const r = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p_plataforma: "web", p_versao: 30004,
+  const r = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p_plataforma: "web", p_versao: 30005,
     p: { id: `e-${tag}`, fornecedor_id: forn, frete: 4, itens: [{ id: `e-${tag}-1`, produto_id: prod, quantidade: 20, valor_pago: 100, perda_pct: 8 }] } });
   assert.ok(Math.abs(r.itens[0].custo_efetivo - 104 / 18.4) < 1e-3);
   const rep = await rpc(caixa, "v3_registrar_entrada", { p_loja: LOJA, p: { id: `e-${tag}`, itens: [] } });
@@ -79,8 +79,8 @@ const venda = randomUUID();
 await t("venda com itens: baixa estoque, guarda custo, reenvio não duplica", async () => {
   const p = { id: venda, total: 11.24, forma: "pix", criado_em: new Date().toISOString(),
     itens: [{ id: `${venda}-1`, produto_id: prod, nome: "Tomate", unidade: "kg", quantidade: 1.25, preco_unit: 8.99, total: 11.24 }] };
-  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30004 });
-  const r2 = await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30004 });
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30005 });
+  const r2 = await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p, p_plataforma: "web", p_versao: 30005 });
   assert.equal(r2.repetida, true);
   const { data: v } = await caixa.from("v3_vendas").select("*").eq("loja_id", LOJA).eq("id", venda).single();
   assert.equal(v.tem_itens, true); assert.ok(Number(v.custo_total) > 6 && Number(v.custo_total) < 7.5);
@@ -90,7 +90,7 @@ await t("venda com itens: baixa estoque, guarda custo, reenvio não duplica", as
 
 await t("venda rápida só com valor", async () => {
   const id = randomUUID();
-  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 7.5, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30004 });
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 7.5, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30005 });
   const { data: v } = await caixa.from("v3_vendas").select("tem_itens,custo_total,origem").eq("loja_id", LOJA).eq("id", id).single();
   assert.deepEqual(v, { tem_itens: false, custo_total: null, origem: "v3" });
 });
@@ -114,11 +114,48 @@ await t("tempo real: venda de um aparelho chega no outro", async () => {
       if (p.new.id === id) { clearTimeout(timer); res(Date.now()); admin.removeChannel(ch); }
     }).subscribe(async (s, err) => {
       if (s !== "SUBSCRIBED") console.log("   canal:", s, err?.message ?? "");
-      if (s === "SUBSCRIBED") { await new Promise((ok) => setTimeout(ok, 1500)); /* o servidor leva ~1 s para ligar a escuta depois do SUBSCRIBED */ globalThis.t0 = Date.now(); await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 3, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30004 }); }
+      if (s === "SUBSCRIBED") { await new Promise((ok) => setTimeout(ok, 1500)); /* o servidor leva ~1 s para ligar a escuta depois do SUBSCRIBED */ globalThis.t0 = Date.now(); await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p: { id, total: 3, criado_em: new Date().toISOString() }, p_plataforma: "web", p_versao: 30005 }); }
     });
   });
   const fim = await chegou;
   console.log(`   chegou em ${fim - globalThis.t0} ms`);
+});
+
+await t("APK novo entra sozinho como Caixa; PC sem código não; Caixa não mexe em preço/fornecedor/promoção", async () => {
+  // aparelho realmente novo (1 login anônimo por execução)
+  const apk = await anon();
+  const r = await rpc(apk, "v3_entrar", { p_loja: LOJA, p_nome: "Celular novo", p_plataforma: "android", p_versao: 30005 });
+  assert.equal(r.papel, "caixa");
+  assert.equal((await rpc(apk, "v3_entrar", { p_loja: LOJA, p_plataforma: "android" })).papel, "caixa");
+  // site do PC sem código continua fechado
+  await semAcesso(rpc(estranho, "v3_entrar", { p_loja: LOJA, p_nome: "PC", p_plataforma: "web" }));
+  await semAcesso(rpc(estranho, "v3_entrar", { p_loja: LOJA, p_nome: "PC" }));
+  // loja sem caixa automático (principal) não deixa entrar
+  const p = await rpc(apk, "v3_entrar", { p_loja: "principal", p_plataforma: "android" });
+  assert.equal(p.papel, undefined);
+  const pid = `p-auto-${tag}`;
+  await rpc(apk, "v3_salvar_produto", { p_loja: LOJA, p: { id: pid, nome: `Auto ${tag}`, unidade: "un", preco: 9.99 } });
+  const { data: prod } = await apk.from("v3_produtos").select("preco").eq("loja_id", LOJA).eq("id", pid).single();
+  assert.equal(Number(prod.preco), 0, "Caixa não define preço nem no cadastro");
+  await falha(rpc(apk, "v3_salvar_produto", { p_loja: LOJA, p: { id: pid, preco: 1 } }), /so_admin/);
+  await falha(rpc(apk, "v3_definir_preco", { p_loja: LOJA, p_produto: pid, p_preco: 1 }), /so_admin/);
+  await falha(rpc(apk, "v3_salvar_fornecedor", { p_loja: LOJA, p: { id: `f-${tag}`, nome: "X" } }), /so_admin/);
+  await falha(rpc(apk, "v3_definir_promocao", { p_loja: LOJA, p_produto: pid, p_preco: 1, p_dias: 1, p_dia_sugestao: null }), /so_admin/);
+  await falha(rpc(apk, "v3_contagem", { p_loja: LOJA, p: { id: `c-${tag}`, itens: [] } }), /so_admin/);
+  // Caixa registra entrada de mercadoria
+  const e = await rpc(apk, "v3_registrar_entrada", { p_loja: LOJA, p_plataforma: "android", p_versao: 30005,
+    p: { id: `e-auto-${tag}`, itens: [{ produto_id: pid, quantidade: 4, valor_pago: 10 }] } });
+  assert.equal(e.ok, true);
+  // leituras só de Admin
+  for (const tb of ["v3_precos_diarios", "v3_promocoes_sugeridas", "v3_atividades"]) {
+    const { data } = await apk.from(tb).select("loja_id").eq("loja_id", LOJA).limit(1);
+    assert.equal(data.length, 0, `Caixa não deveria ler ${tb}`);
+    const { data: d2 } = await admin.from(tb).select("loja_id").eq("loja_id", LOJA).limit(1);
+    assert.equal(d2.length, 1, `Admin deveria ler ${tb}`);
+  }
+  // aparelho de teste removido da lista (bloqueado) para não acumular
+  const { data: { user } } = await apk.auth.getUser();
+  await rpc(admin, "v3_definir_aparelho", { p_loja: LOJA, p_uid: user.id, p_papel: null, p_bloqueado: true });
 });
 
 await t("convite de uso único (QR) e bloqueio de aparelho", async () => {
@@ -152,11 +189,11 @@ await t("Caixa não lê outra loja", async () => {
 await t("vigia: operador na venda, sinal com manifesto igual ao recalculado, ids do dia", async () => {
   const { createHash } = await import("node:crypto");
   const vid = `vg-${tag}`;
-  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p_plataforma: "web", p_versao: 30004, p: { id: vid, total: 7.25, forma: "pix", operador: `Bia ${tag}`, criado_em: new Date().toISOString() } });
+  await rpc(caixa, "v3_registrar_venda", { p_loja: LOJA, p_plataforma: "web", p_versao: 30005, p: { id: vid, total: 7.25, forma: "pix", operador: `Bia ${tag}`, criado_em: new Date().toISOString() } });
   const { data: v } = await caixa.from("v3_vendas").select("operador").eq("loja_id", LOJA).eq("id", vid).single();
   assert.equal(v.operador, `Bia ${tag}`);
   const dia = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
-  const r = await rpc(caixa, "v3_sync_sinal", { p_loja: LOJA, p_versao: 30004, p: { operador: `Bia ${tag}`, pendentes: 3, atraso_seg: 300, de: dia } });
+  const r = await rpc(caixa, "v3_sync_sinal", { p_loja: LOJA, p_versao: 30005, p: { operador: `Bia ${tag}`, pendentes: 3, atraso_seg: 300, de: dia } });
   const ids = await rpc(caixa, "v3_sync_ids", { p_loja: LOJA, p_dia: dia });
   assert.ok(ids.some(([id]) => id === vid));
   const h = createHash("sha256").update(ids.map(([id, ex]) => id + (ex ? ":x" : "")).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(",")).digest("hex");
@@ -164,7 +201,7 @@ await t("vigia: operador na venda, sinal com manifesto igual ao recalculado, ids
   const { data: a } = await admin.from("v3_aparelhos").select("operador,pendentes,atraso_seg,sync_em").eq("loja_id", LOJA).eq("nome", "Caixa teste");
   assert.ok(a.some((x) => x.operador === `Bia ${tag}` && x.pendentes === 3 && x.atraso_seg === 300 && x.sync_em));
   await falha(rpc(estranho, "v3_sync_ids", { p_loja: LOJA, p_dia: dia }), /sem_acesso|42501|permission/);
-  await rpc(caixa, "v3_sync_sinal", { p_loja: LOJA, p_versao: 30004, p: { operador: `Bia ${tag}`, pendentes: 0, atraso_seg: 0, em_dia: true } });
+  await rpc(caixa, "v3_sync_sinal", { p_loja: LOJA, p_versao: 30005, p: { operador: `Bia ${tag}`, pendentes: 0, atraso_seg: 0, em_dia: true } });
 });
 
 await t("backup: exportação só com a chave (aparelho e chave errada não conseguem)", async () => {

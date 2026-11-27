@@ -12,7 +12,9 @@ export function LigarAparelho() {
     <div className="tela-cheia" data-testid="ligar-aparelho">
       <div style={{ fontSize: 56 }}>🔗</div>
       <h1>Ligar este aparelho</h1>
-      <p>Para usar o {NOME_LOJA} aqui, abra o app num aparelho Admin, vá em <b>Ajustes → Ligar outro aparelho</b> e leia o QR ou digite o código. O código de recuperação também funciona.</p>
+      {PLATAFORMA === "android"
+        ? <p>Não deu para entrar sozinho como Caixa no {NOME_LOJA}. Peça um convite (QR) a um Admin ou use o código de recuperação.</p>
+        : <p>No computador, para usar o {NOME_LOJA}, abra o app num aparelho Admin, vá em <b>Ajustes → Ligar outro aparelho</b> e leia o QR ou digite o código. O código de recuperação (Admin) também funciona.</p>}
       <input className="input" value={c} onChange={(e) => setC(e.target.value)} placeholder="CÓDIGO" autoFocus data-testid="ligar-codigo"
         onKeyDown={(e) => { if (e.key === "Enter") void ir(c); }} />
       {erro && <div className="erro" style={{ maxWidth: 320 }}>{erro}</div>}
