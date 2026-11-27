@@ -263,7 +263,7 @@ test("atualização obrigatória bloqueia o app", async ({ browser }) => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const p = await ctx.newPage();
   await p.route(/v3_app_versao/, (r) => r.fulfill({ status: 200, contentType: "application/json",
-    body: JSON.stringify([{ plataforma: "web", minima: 99999, atual: 99999, nome_atual: "3.1.0", url: "https://exemplo.invalid/app.apk", novidades: "teste" }]) }));
+    body: JSON.stringify(["web", "android"].map((plataforma) => ({ plataforma, minima: 99999, atual: 99999, nome_atual: "3.1.0", url: "https://exemplo.invalid/app.apk", novidades: "teste" }))) }));
   await p.goto("/#caixa");
   await expect(p.getByTestId("nova-versao")).toBeVisible({ timeout: 30_000 });
   await expect(p.getByText("3.1.0")).toBeVisible();

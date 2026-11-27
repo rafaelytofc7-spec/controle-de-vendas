@@ -43,7 +43,8 @@ begin
   if cod = '' then
     -- sem código: só a entrada automática de Caixa (APK)
     if a.uid is null and coalesce(s.caixa_automatico, false) and p_plataforma = 'android' then
-      if (select count(*) from v3_aparelhos where loja_id = p_loja and criado_em > now() - interval '1 hour') >= 30 then
+      -- trava contra robô: no máximo 30 entradas automáticas por hora na loja
+      if (select count(*) from v3_atividades where loja_id = p_loja and acao = 'entrou_auto' and em > now() - interval '1 hour') >= 30 then
         raise exception 'muitas_tentativas' using errcode = '42501';
       end if;
       papel_novo := 'caixa';
@@ -77,3 +78,5 @@ begin
   perform v3_log(p_loja, case when cod = '' then 'entrou_auto' else 'entrou' end, 'v3_aparelhos', u::text, papel_novo);
   return jsonb_build_object('papel', papel_novo, 'nome', coalesce(nullif(left(trim(p_nome),40),''), case when papel_novo='admin' then 'Admin' else 'Caixa' end));
 end $$;
+
+drop function if exists v3_conta_auto(text);
