@@ -17,3 +17,4 @@ app/android/capacitor-cordova-android-plugins/build/
 .env*
 conferencias/
 app/tsconfig.tsbuildinfo
+logs-backup/

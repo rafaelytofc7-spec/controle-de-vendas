@@ -151,3 +151,15 @@ Tudo dentro da loja `principal`. Todas as tabelas têm `id` (gerado no aparelho)
 - Telas (PNG, dados de exemplo): `mockups/`
   - celular: `cel-caixa.png`, `cel-produtos.png`, `cel-chegou.png`, `cel-encomendas.png`, `cel-promocoes.png`, `cel-atualizar.png`
   - PC: `pc-painel.png`, `pc-fornecedores.png`, `pc-relatorio.png`, `pc-produto.png`
+
+## Adicionado em 27/11 (pedido t771u): operador, vigia da sincronização e backup no GitHub
+
+- **Nome do operador**: na primeira vez (e em “👤 trocar”) o app pergunta “Quem está no caixa?”. Dá para responder “Agora não”: o login anônimo, a entrada na loja e a sincronização rodam por trás sem esperar o nome. O nome só etiqueta as vendas (`v3_vendas.operador`) e aparece na lista do dia e na lista de aparelhos.
+- **Vigia da sincronização** (em todo aparelho, a cada 2 min, ao reconectar e no botão):
+  - o aparelho manda um “sinal de vida” (`v3_sync_sinal`) com fila pendente, atraso da mais antiga, operador e o que achou de diferença; recebe do servidor o manifesto por dia (quantidade, soma e hash dos ids);
+  - compara com o que tem guardado (7 dias; “Reenviar tudo” = 34 dias). Dia diferente → pede os ids do dia (`v3_sync_ids`):
+    - falta no servidor → reenvia a **cópia guardada no aparelho** (diário local de 40 dias com o pedido completo; reenvio não duplica);
+    - falta no aparelho → baixa do servidor;
+  - alerta “Sincronização atrasada X min · Y faltando · Reenviar” no celular e no PC; o Admin vê também o atraso dos outros aparelhos; em Ajustes → Sincronização há “🔁 Reenviar tudo”.
+- **Backup no GitHub (repo privado `controle-de-vendas-dados`, pasta `v3/`)**: vendas por mês (com itens), entradas, estoque, cadastro, manifesto por dia; incremental e conferido dia a dia com o servidor (se não bater, baixa tudo). Leitura pela função `v3_backup_exportar`, protegida por chave (só o hash fica no banco).
+- **Conferência no box** (`scripts/conferir-sync.mjs`): servidor × backup do GitHub × app antigo (cópia somente-leitura guardada no repo) × cópia da rotina (`public.vendas`).
